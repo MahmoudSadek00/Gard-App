@@ -62,8 +62,15 @@ if st.session_state.df is not None:
         }
 
         if (!window.scannerInitialized) {
-            let html5QrcodeScanner = new Html5QrcodeScanner(
-                "reader", { fps: 10, qrbox: 250 });
+            const config = {
+                fps: 10,
+                qrbox: 250,
+                formatsToSupport: [ "code_128", "ean", "ean_13", "upc", "upc_e", "codabar" ]
+            };
+
+            const html5QrcodeScanner = new Html5QrcodeScanner(
+                "reader", config, false);
+
             html5QrcodeScanner.render(onScanSuccess);
             window.scannerInitialized = true;
         }
