@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from streamlit.components.v1 import html
+from streamlit_js_eval import streamlit_js_eval
 
 st.set_page_config(page_title="📦 Inventory Scanner", layout="wide")
 st.title("📦 Domanza Inventory App with Camera")
@@ -8,8 +9,6 @@ st.title("📦 Domanza Inventory App with Camera")
 # Initial session states
 if 'barcode_counts' not in st.session_state:
     st.session_state.barcode_counts = {}
-if 'barcode_input' not in st.session_state:
-    st.session_state.barcode_input = ""
 if 'df' not in st.session_state:
     st.session_state.df = None
 if 'show_camera' not in st.session_state:
@@ -42,44 +41,31 @@ if uploaded_file:
 if st.session_state.df is not None:
     df = st.session_state.df
 
-    # Toggle camera button
+    # Toggle camera
     if st.button("📷 Toggle Camera"):
         st.session_state.show_camera = not st.session_state.show_camera
 
-    # ======== Barcode Camera Scanner ========
     if st.session_state.show_camera:
         st.markdown("### 📸 Camera Barcode Scanner")
         html("""
         <script src="https://unpkg.com/html5-qrcode"></script>
-        <div id="reader" style="width: 300px;"></div>
+        <div id="reader" width="600px"></div>
         <script>
-        async function startScanner() {
-          const qrCodeSuccessCallback = (decodedText, decodedResult) => {
-            const inputBox = window.parent.document.querySelector('input[data-testid="stTextInput"]');
-            if (inputBox) {
-              inputBox.value = decodedText;
-              inputBox.dispatchEvent(new Event('input', { bubbles: true }));
-            }
-          };
-
-          const config = { fps: 10, qrbox: 250 };
-
-          const html5QrCode = new Html5Qrcode("reader");
-
-          try {
-            await html5QrCode.start({ facingMode: "environment" }, config, qrCodeSuccessCallback);
-          } catch (err) {
-            document.getElementById("reader").innerHTML = "⚠️ Failed to start camera. Please allow camera access.";
-            console.error(err);
-          }
+        window.scannedBarcode = "";
+        function onScanSuccess(decodedText, decodedResult) {
+            window.scannedBarcode = decodedText;
         }
-
-        startScanner();
+        if (!window.scannerInitialized) {
+            let html5QrcodeScanner = new Html5QrcodeScanner(
+                "reader", { fps: 10, qrbox: 250 });
+            html5QrcodeScanner.render(onScanSuccess);
+            window.scannerInitialized = true;
+        }
         </script>
         """, height=400)
 
-    # ======== Manual Input (Updated by Camera) ========
-    scanned = st.text_input("Or Enter Barcode Manually", value=st.session_state.barcode_input)
+    # ===== Read scanned value using streamlit-js-eval =====
+    scanned = streamlit_js_eval(js_expressions="window.scannedBarcode", key="barcode_eval")
 
     product_name_display = ""
 
@@ -100,9 +86,23 @@ if st.session_state.df is not None:
             product_name_display = "❌ Not Found"
 
         st.session_state.df = df
-        st.session_state.barcode_input = ""  # Clear input
-    else:
-        st.session_state.barcode_input = scanned
+
+    # Manual input option
+    manual_input = st.text_input("✍️ Or Enter Barcode Manually")
+    if manual_input:
+        manual_input = manual_input.strip()
+        if manual_input in st.session_state.barcode_counts:
+            st.session_state.barcode_counts[manual_input] += 1
+        else:
+            st.session_state.barcode_counts[manual_input] = 1
+
+        if manual_input in df["Barcodes"].values:
+            df.loc[df["Barcodes"] == manual_input, "Actual Quantity"] += 1
+            product_name_display = df.loc[df["Barcodes"] == manual_input, "Product Name"].values[0]
+        else:
+            product_name_display = "❌ Not Found"
+
+        st.session_state.df = df
 
     # Display product name
     st.markdown("#### 🏷️ Product Name")
@@ -120,7 +120,7 @@ if st.session_state.df is not None:
     st.subheader("📋 Updated Sheet")
     st.dataframe(df)
 
-    # Scanned barcodes log
+    # Show scanned barcode log
     st.markdown("### ✅ Scanned Barcode Log")
     st.write(pd.DataFrame([
         {"Barcode": k, "Scanned Count": v}
