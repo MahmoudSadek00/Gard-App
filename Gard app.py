@@ -18,8 +18,9 @@ if uploaded_file:
     df = all_sheets[selected_sheet]
     df.columns = df.columns.str.strip()
 
-    if "Barcodes" not in df.columns or "Available Quantity" not in df.columns or "Actual Quantity" not in df.columns:
-        st.error("❌ Sheet must contain 'Barcodes', 'Available Quantity', and 'Actual Quantity' columns.")
+    required_columns = ["Barcodes", "Available Quantity", "Actual Quantity", "Product Name"]
+    if not all(col in df.columns for col in required_columns):
+        st.error(f"❌ Sheet must contain these columns: {required_columns}")
         st.write("Available columns:", df.columns.tolist())
         st.stop()
 
@@ -31,10 +32,22 @@ if uploaded_file:
     st.markdown("### 📸 Scan Barcode")
     barcode_input = st.text_input("Scan Here", value="", label_visibility="collapsed")
 
+    # لعرض اسم المنتج
+    product_name_display = ""
+
     if barcode_input:
         barcode_input = barcode_input.strip()
         st.session_state.scanned_barcodes.append(barcode_input)
-        st.text_input("Last Scanned", value=barcode_input, disabled=True)
+
+        # جلب اسم المنتج
+        matched_product = df.loc[df["Barcodes"] == barcode_input, "Product Name"]
+        if not matched_product.empty:
+            product_name_display = matched_product.iloc[0]
+        else:
+            product_name_display = "❌ Not Found"
+
+        st.text_input("Last Scanned Barcode", value=barcode_input, disabled=True)
+        st.text_input("🧾 Product Name", value=product_name_display, disabled=True)
 
     # تجهيز السكان
     scanned_df = pd.DataFrame(st.session_state.scanned_barcodes, columns=["Barcodes"])
