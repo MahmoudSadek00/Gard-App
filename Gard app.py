@@ -1,78 +1,63 @@
 import streamlit as st
 import pandas as pd
-import io
 
 st.set_page_config(page_title="📦 Inventory Scanner", layout="wide")
-st.title("📦 Inventory Scanner App")
+st.title("📦 Domanza Inventory App with Barcode Scanner")
 
-uploaded_file = st.file_uploader("Upload your inventory Excel file", type=["xlsx"])
+# تحميل ملف الإكسل
+uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx", "xls"])
 
-# تحميل الملف ومعالجة التابات
-if uploaded_file and "sheets_data" not in st.session_state:
-    try:
-        # قراءة كل التابات
-        xls = pd.ExcelFile(uploaded_file)
-        sheets_data = {sheet_name: xls.parse(sheet_name) for sheet_name in xls.sheet_names}
-        
-        # تحقق من الأعمدة في كل تاب
-        for name, df in sheets_data.items():
-            if "Barcodes" not in df.columns or "Available Quantity" not in df.columns:
-                st.error(f"❌ Sheet '{name}' must contain 'Barcodes' and 'Available Quantity'")
-                st.stop()
-            df["Actual Quantity"] = 0
-            df["Difference"] = df["Actual Quantity"] - df["Available Quantity"]
+if uploaded_file:
+    # قراءة كل الـ sheets مرة واحدة
+    xls = pd.ExcelFile(uploaded_file)
+    sheet_names = xls.sheet_names
+    sheets_data = {name: xls.parse(name) for name in sheet_names}
 
-        st.session_state.sheets_data = sheets_data
-        st.session_state.selected_sheet = xls.sheet_names[0]
-        st.session_state.df = sheets_data[st.session_state.selected_sheet]
+    # اختيار الشيت (البراند) من Dropdown
+    selected_sheet = st.selectbox("Select a brand sheet:", sheet_names)
 
-        st.success("✅ File loaded successfully!")
-    except Exception as e:
-        st.error(f"Error reading Excel file: {e}")
-        st.stop()
+    # الشيت اللي اختاره المستخدم
+    df = sheets_data[selected_sheet]
 
-# بعد تحميل الملف
-if "sheets_data" in st.session_state:
-    # اختيار التاب
-    sheet_names = list(st.session_state.sheets_data.keys())
-    selected = st.selectbox("Select Sheet (Brand)", sheet_names, index=sheet_names.index(st.session_state.selected_sheet))
-    
-    if selected != st.session_state.selected_sheet:
-        st.session_state.selected_sheet = selected
-        st.session_state.df = st.session_state.sheets_data[selected]
+    # تأكد من وجود الأعمدة المطلوبة
+    if "Barcodes" in df.columns and "Available Quantity" in df.columns:
+        # باركود سكان سريع
+        barcode = st.text_input("Scan or enter barcode")
 
-    df = st.session_state.df
+        if "scanned" not in st.session_state:
+            st.session_state.scanned = {}
 
-    st.subheader("📸 Scan Barcode")
-    barcode = st.text_input("Scan or enter barcode", key="barcode_input")
-
-    if barcode:
-        barcode = barcode.strip()
-        if barcode in df["Barcodes"].astype(str).values:
-            df.loc[df["Barcodes"].astype(str) == barcode, "Actual Quantity"] += 1
-            df["Difference"] = df["Actual Quantity"] - df["Available Quantity"]
-            st.success(f"✅ Barcode {barcode} counted.")
-        else:
-            st.warning(f"❌ Barcode '{barcode}' not found.")
-
-        st.session_state.barcode_input = ""  # تفريغ الحقل
-        st.experimental_rerun()
-
-    st.dataframe(df, use_container_width=True)
-
-    # زر التحميل
-    if "sheets_data" in st.session_state:
-        buffer = io.BytesIO()
-        with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
-            for sheet_name, sheet_df in st.session_state.sheets_data.items():
-                if sheet_name == st.session_state.selected_sheet:
-                    st.session_state.df.to_excel(writer, sheet_name=sheet_name, index=False)
+        # تحديث الكمية لو الباركود متسجل
+        if barcode:
+            if barcode in df["Barcodes"].astype(str).values:
+                if barcode not in st.session_state.scanned:
+                    st.session_state.scanned[barcode] = 1
                 else:
-                    sheet_df.to_excel(writer, sheet_name=sheet_name, index=False)
+                    st.session_state.scanned[barcode] += 1
+                st.experimental_rerun()  # إعادة تحميل الصفحة تلقائيًا بعد كل إدخال
 
-        st.download_button(
-            label="📥 Download Updated File",
-            data=buffer.getvalue(),
-            file_name="updated_inventory_with_changes.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+        # إنشاء DataFrame من الباركودات اللي تم سكانها
+        scanned_df = pd.DataFrame.from_dict(st.session_state.scanned, orient="index", columns=["Actual Quantity"])
+        scanned_df.reset_index(inplace=True)
+        scanned_df.rename(columns={"index": "Barcodes"}, inplace=True)
+
+        # دمج الداتا الأصلية مع السكان
+        merged = pd.merge(df, scanned_df, on="Barcodes", how="left")
+        merged["Actual Quantity"] = merged["Actual Quantity"].fillna(0).astype(int)
+        merged["Difference"] = merged["Actual Quantity"] - merged["Available Quantity"]
+
+        st.subheader("📊 Updated Inventory")
+        st.dataframe(merged)
+
+        # تحميل الناتج
+        @st.cache_data
+        def convert_df_to_csv(df):
+            return df.to_csv(index=False).encode('utf-8')
+
+        csv = convert_df_to_csv(merged)
+        st.download_button("📥 Download CSV", data=csv, file_name="updated_inventory.csv", mime="text/csv")
+
+    else:
+        st.error("❌ Required columns 'Barcodes' and 'Available Quantity' not found in selected sheet.")
+else:
+    st.info("⬆️ Please upload an Excel file to begin.")
