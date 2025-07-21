@@ -4,10 +4,6 @@ import pandas as pd
 st.set_page_config(page_title="📦 Inventory Scanner", layout="wide")
 st.title("📦 Domanza Inventory App with Camera")
 
-# Session state
-if 'scanned_barcodes' not in st.session_state:
-    st.session_state.scanned_barcodes = []
-
 # File uploader
 uploaded_file = st.file_uploader("Upload Inventory Excel File", type=["xlsx"])
 
@@ -30,14 +26,16 @@ if uploaded_file:
 
     # سكان باركود
     st.markdown("### 📸 Scan Barcode")
-    barcode_input = st.text_input("Scan Here", value="", label_visibility="collapsed")
 
-    # لعرض اسم المنتج
+    cols = st.columns([2, 2])  # خليتين جنب بعض: واحدة للباركود، والتانية لاسم المنتج
+
+    with cols[0]:
+        barcode_input = st.text_input("Scan Here", value="", label_visibility="visible")
+
     product_name_display = ""
 
     if barcode_input:
         barcode_input = barcode_input.strip()
-        st.session_state.scanned_barcodes.append(barcode_input)
 
         # جلب اسم المنتج
         matched_product = df.loc[df["Barcodes"] == barcode_input, "Product Name"]
@@ -46,20 +44,11 @@ if uploaded_file:
         else:
             product_name_display = "❌ Not Found"
 
-        st.text_input("Last Scanned Barcode", value=barcode_input, disabled=True)
+        # تحديث الكمية
+        df.loc[df["Barcodes"] == barcode_input, "Actual Quantity"] = 1
+
+    with cols[1]:
         st.text_input("🧾 Product Name", value=product_name_display, disabled=True)
-
-    # تجهيز السكان
-    scanned_df = pd.DataFrame(st.session_state.scanned_barcodes, columns=["Barcodes"])
-    scanned_df["Barcodes"] = scanned_df["Barcodes"].astype(str).str.strip()
-    scanned_df["Actual Quantity"] = 1
-    scanned_df = scanned_df.groupby("Barcodes").sum().reset_index()
-
-    # تحديث الشيت الأصلي مباشرة
-    for _, row in scanned_df.iterrows():
-        barcode = row["Barcodes"]
-        count = row["Actual Quantity"]
-        df.loc[df["Barcodes"] == barcode, "Actual Quantity"] = count
 
     # تحديث الفرق تلقائي
     if "Difference" in df.columns:
