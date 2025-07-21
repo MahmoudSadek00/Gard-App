@@ -9,8 +9,6 @@ if "uploaded_file" not in st.session_state:
     st.session_state.uploaded_file = None
 if "sheets" not in st.session_state:
     st.session_state.sheets = []
-if "sheet_data" not in st.session_state:
-    st.session_state.sheet_data = None
 if "selected_sheet" not in st.session_state:
     st.session_state.selected_sheet = None
 if "barcode_input" not in st.session_state:
@@ -31,9 +29,15 @@ if st.session_state.sheets:
 # تحميل الداتا من الشيت
 if st.session_state.uploaded_file and st.session_state.selected_sheet:
     df = pd.read_excel(st.session_state.uploaded_file, sheet_name=st.session_state.selected_sheet)
+    
     df["Barcodes"] = df["Barcodes"].astype(str).str.strip()  # تأكيد تنسيق الباركودات
+
+    # إنشاء العمود لو مش موجود
     if "Actual Quantity" not in df.columns:
         df["Actual Quantity"] = 0
+
+    # معالجة القيم الفارغة وتحويلها لأرقام
+    df["Actual Quantity"] = df["Actual Quantity"].fillna(0).astype(int)
 
     # إدخال الباركود
     barcode = st.text_input("🔍 Scan or Enter Barcode", value=st.session_state.barcode_input)
