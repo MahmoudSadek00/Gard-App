@@ -37,10 +37,18 @@ if uploaded_file and st.session_state.df is None:
 if st.session_state.df is not None:
     df = st.session_state.df  # اشتغل على النسخة الموجودة في السيشن
 
-    # سكان باركود
+    # سكان باركود + زر Clear
     st.markdown("### 📸 Scan Barcode")
-    scanned = st.text_input("Scan Barcode", value=st.session_state.barcode_input)
-    
+    scan_col, clear_col = st.columns([4, 1])
+
+    with scan_col:
+        scanned = st.text_input("Scan Barcode", value=st.session_state.barcode_input, key="barcode_input")
+
+    with clear_col:
+        if st.button("🧹 Clear"):
+            st.session_state.barcode_input = ""
+            scanned = ""
+
     product_name_display = ""
 
     if scanned:
@@ -65,8 +73,6 @@ if st.session_state.df is not None:
 
         # Reset input
         st.session_state.barcode_input = ""
-    else:
-        st.session_state.barcode_input = scanned
 
     # عرض اسم المنتج تحت سكان الباركود
     st.markdown("#### 🏷️ Product Name")
