@@ -1,91 +1,87 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
 import io
 
-CAMERA_HTML = """
-<div style="width: 300px; margin-bottom: 10px;" id="reader"></div>
-<script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
-<script>
-function onScanSuccess(decodedText, decodedResult) {
-  window.parent.postMessage({type: 'barcode', code: decodedText}, '*');
-  html5QrcodeScanner.clear();
-}
-var html5QrcodeScanner = new Html5QrcodeScanner(
-  "reader", { fps: 10, qrbox: 250, aspectRatio: 1.2, facingMode: "environment" }, false);
-html5QrcodeScanner.render(onScanSuccess);
-</script>
-"""
+st.set_page_config(page_title="📦 Inventory Scanner", layout="wide")
+st.title("📦 Inventory Scanner App")
 
-st.set_page_config(page_title="📦 Inventory Scanner with Camera", layout="wide")
-st.title("📦 Inventory Scanner App with Camera")
-
-uploaded_file = st.file_uploader("Upload your inventory file", type=["xlsx", "xls"])
+# رفع الملف
+uploaded_file = st.file_uploader("Upload your inventory file (Excel with multiple sheets)", type=["xlsx"])
 
 if uploaded_file:
+    # قراءة كل الشيتات في dict
     sheets_data = pd.read_excel(uploaded_file, sheet_name=None)
 
-    first_sheet_df = next(iter(sheets_data.values()))
-    if 'Branch' in first_sheet_df.columns:
-        branches = first_sheet_df['Branch'].dropna().unique().tolist()
-        selected_branch = st.selectbox("Select Branch / Brand", branches)
-        selected_df = sheets_data.get(selected_branch, first_sheet_df)
-    else:
-        sheet_names = list(sheets_data.keys())
-        selected_branch = st.selectbox("Select Branch / Brand (sheet)", sheet_names)
-        selected_df = sheets_data[selected_branch]
+    # حفظ في session_state عند أول تحميل
+    if "sheets_data" not in st.session_state:
+        st.session_state.sheets_data = sheets_data
+        # تجهيز df لكل شيت مع Actual Quantity و Difference
+        for sheet_name, df in st.session_state.sheets_data.items():
+            if 'Barcodes' not in df.columns or 'Available Quantity' not in df.columns:
+                st.error(f"Sheet '{sheet_name}' must include 'Barcodes' and 'Available Quantity' columns")
+                st.stop()
+            df['Actual Quantity'] = 0
+            # قد تكون Difference موجودة كـ formula في الأصل، لكن هنا نحافظ على نسخة محسوبة
+            df['Difference'] = df['Actual Quantity'] - df['Available Quantity']
+            st.session_state.sheets_data[sheet_name] = df
 
-    required_cols = ['Barcodes', 'Available Quantity']
-    missing_cols = [col for col in required_cols if col not in selected_df.columns]
-    if missing_cols:
-        st.error(f"Missing required columns: {missing_cols}")
-        st.stop()
+# اختيار البراند (اسم الشيت)
+selected_brand = None
+if "sheets_data" in st.session_state:
+    sheet_names = list(st.session_state.sheets_data.keys())
+    selected_brand = st.selectbox("Select Brand (Sheet)", sheet_names)
 
-    if 'Actual Quantity' not in selected_df.columns:
-        selected_df['Actual Quantity'] = 0
-    if 'Difference' not in selected_df.columns:
-        selected_df['Difference'] = selected_df['Actual Quantity'] - selected_df['Available Quantity']
+# خانة الباركود مع زر تشغيل الكاميرا (بدون كاميرا حاليًا)
+if selected_brand:
+    df = st.session_state.sheets_data[selected_brand]
 
-    st.subheader("Scan or enter barcode")
+    st.subheader(f"Brand: {selected_brand}")
 
-    barcode_input = st.text_input("Enter or scan barcode", key="barcode_input")
+    # خانة إدخال الباركود
+    if "barcode_input" not in st.session_state:
+        st.session_state.barcode_input = ""
 
-    if st.button("Toggle Camera Scanner"):
-        st.session_state.show_camera = not st.session_state.get("show_camera", False)
-    else:
-        if "show_camera" not in st.session_state:
-            st.session_state.show_camera = False
+    barcode = st.text_input("Scan or enter barcode", key="barcode_input")
 
-    if st.session_state.show_camera:
-        st.components.v1.html(CAMERA_HTML, height=320, scrolling=False)
+    # Toggle camera placeholder button (تفعيل الكاميرا مستقبلاً)
+    if st.button("Toggle Camera (Coming soon)"):
+        st.info("Camera functionality will be added soon.")
 
-    # استخدم st.query_params بدلاً من st.experimental_get_query_params
-    barcode_js = st.query_params.get("barcode", [""])[0]
+    # معالجة سكان الباركود
+    if barcode and len(barcode.strip()) > 0:
+        barcode_val = barcode.strip()
+        if barcode_val in df['Barcodes'].astype(str).values:
+            df.loc[df['Barcodes'].astype(str) == barcode_val, 'Actual Quantity'] += 1
+            df['Difference'] = df['Actual Quantity'] - df['Available Quantity']
+            st.success(f"✅ Barcode '{barcode_val}' counted.")
+            st.session_state.sheets_data[selected_brand] = df
 
-    if barcode_js and barcode_js != barcode_input:
-        barcode_input = barcode_js
+            # اضبط علم المسح لمسح خانة الباركود وإعادة تشغيل آمنة
+            st.session_state.clear_barcode_input = True
 
-    if barcode_input:
-        barcode = barcode_input.strip()
-        if barcode in selected_df['Barcodes'].astype(str).values:
-            selected_df.loc[selected_df['Barcodes'].astype(str) == barcode, 'Actual Quantity'] += 1
-            selected_df['Difference'] = selected_df['Actual Quantity'] - selected_df['Available Quantity']
-            st.success(f"✅ Barcode {barcode} counted.")
-            st.session_state.barcode_input = ""
             st.experimental_rerun()
         else:
-            st.warning(f"❌ Barcode '{barcode}' not found.")
+            st.warning(f"❌ Barcode '{barcode_val}' not found in brand '{selected_brand}'.")
 
-    st.dataframe(selected_df)
+# مسح خانة الباركود بأمان
+if st.session_state.get("clear_barcode_input", False):
+    st.session_state.barcode_input = ""
+    st.session_state.clear_barcode_input = False
 
-    buffer = io.BytesIO()
-    today_str = datetime.today().strftime("%Y-%m-%d")
-    file_name = f"{selected_branch}_{today_str}.xlsx"
-    with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-        selected_df.to_excel(writer, index=False, sheet_name=selected_branch)
+# عرض الجدول النهائي فقط للبراند المحدد
+if selected_brand:
+    st.dataframe(st.session_state.sheets_data[selected_brand], use_container_width=True)
+
+    # زر تحميل الملف النهائي مجمع كل البراندات (جميع الشيتات في ملف واحد)
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        for sheet_name, df in st.session_state.sheets_data.items():
+            df.to_excel(writer, sheet_name=sheet_name, index=False)
+    output.seek(0)
+
     st.download_button(
-        label="📥 Download Updated Inventory",
-        data=buffer.getvalue(),
-        file_name=file_name,
+        label="📥 Download Full Updated Inventory",
+        data=output,
+        file_name=f"inventory_updated_{pd.Timestamp.today().strftime('%Y%m%d')}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
