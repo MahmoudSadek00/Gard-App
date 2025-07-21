@@ -32,7 +32,7 @@ if uploaded_file:
 
     # 📸 سكان باركود
     st.markdown("### 📸 Scan Barcode")
-    barcode_input = st.text_input("Scan Here", value="", label_visibility="collapsed")
+    barcode_input = st.text_input("Scan Here", value="", label_visibility="visible")
 
     product_name_display = ""
     if barcode_input:
@@ -47,8 +47,8 @@ if uploaded_file:
         else:
             product_name_display = "❌ Not Found"
 
-    # عرض اسم المنتج تحت الباركود
-    st.text_input("Product Name", value=product_name_display, disabled=True)
+    # 👇 عرض اسم المنتج تحت الباركود بنفس الشكل وبوضوح
+    st.text_input("Product Name", value=product_name_display, disabled=True, label_visibility="visible")
 
     # حساب الفرق
     if "Difference" not in df.columns:
