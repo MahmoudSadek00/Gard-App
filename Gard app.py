@@ -41,7 +41,6 @@ if uploaded_file:
 if st.session_state.df is not None:
     df = st.session_state.df
 
-    # Toggle camera
     if st.button("📷 Toggle Camera"):
         st.session_state.show_camera = not st.session_state.show_camera
 
@@ -51,10 +50,17 @@ if st.session_state.df is not None:
         <script src="https://unpkg.com/html5-qrcode"></script>
         <div id="reader" width="600px"></div>
         <script>
-        window.scannedBarcode = "";
+        let lastResult = "";
         function onScanSuccess(decodedText, decodedResult) {
-            window.scannedBarcode = decodedText;
+            if (decodedText !== lastResult) {
+                lastResult = decodedText;
+                const streamlitEvent = new Event("input");
+                const hiddenInput = document.getElementById("hidden_barcode_input");
+                hiddenInput.value = decodedText;
+                hiddenInput.dispatchEvent(streamlitEvent);
+            }
         }
+
         if (!window.scannerInitialized) {
             let html5QrcodeScanner = new Html5QrcodeScanner(
                 "reader", { fps: 10, qrbox: 250 });
@@ -62,10 +68,12 @@ if st.session_state.df is not None:
             window.scannerInitialized = true;
         }
         </script>
-        """, height=400)
+        <input type="hidden" id="hidden_barcode_input"/>
+        """, height=420)
 
-    # ===== Read scanned value using streamlit-js-eval =====
-    scanned = streamlit_js_eval(js_expressions="window.scannedBarcode", key="barcode_eval")
+    # Barcode input (linked to JS hidden field)
+    scanned = streamlit_js_eval(js_expressions="document.getElementById('hidden_barcode_input').value", key="eval_barcode")
+    scanned = st.text_input("Or Enter Barcode Manually", value=scanned or "")
 
     product_name_display = ""
 
@@ -87,23 +95,6 @@ if st.session_state.df is not None:
 
         st.session_state.df = df
 
-    # Manual input option
-    manual_input = st.text_input("✍️ Or Enter Barcode Manually")
-    if manual_input:
-        manual_input = manual_input.strip()
-        if manual_input in st.session_state.barcode_counts:
-            st.session_state.barcode_counts[manual_input] += 1
-        else:
-            st.session_state.barcode_counts[manual_input] = 1
-
-        if manual_input in df["Barcodes"].values:
-            df.loc[df["Barcodes"] == manual_input, "Actual Quantity"] += 1
-            product_name_display = df.loc[df["Barcodes"] == manual_input, "Product Name"].values[0]
-        else:
-            product_name_display = "❌ Not Found"
-
-        st.session_state.df = df
-
     # Display product name
     st.markdown("#### 🏷️ Product Name")
     st.markdown(f"""
@@ -120,7 +111,7 @@ if st.session_state.df is not None:
     st.subheader("📋 Updated Sheet")
     st.dataframe(df)
 
-    # Show scanned barcode log
+    # Scanned barcodes log
     st.markdown("### ✅ Scanned Barcode Log")
     st.write(pd.DataFrame([
         {"Barcode": k, "Scanned Count": v}
