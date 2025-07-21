@@ -17,33 +17,42 @@ if uploaded_file:
 
     selected_sheet = st.selectbox("Select Brand Sheet", sheet_names)
     df = all_sheets[selected_sheet]
-    df = df.rename(columns=lambda x: x.strip())
+    df.columns = df.columns.str.strip()  # Strip spaces
 
     if "Barcodes" not in df.columns or "Available Quantity" not in df.columns:
         st.error("The sheet must contain 'Barcodes' and 'Available Quantity' columns.")
+        st.write("Available columns:", df.columns.tolist())  # debug print
         st.stop()
 
-    # Barcode input comes first (before table)
+    # Barcode input
     st.markdown("### 📸 Scan Barcode")
     barcode_input = st.text_input("Scan Here", value="", label_visibility="collapsed")
 
     if barcode_input:
         st.session_state.scanned_barcodes.append(barcode_input)
-        # Clear input manually by forcing empty
         st.text_input("Last Scanned", value=barcode_input, disabled=True)
-        barcode_input = ""  # Reset local var
+        barcode_input = ""
 
     # Process scanned barcodes
     scanned_df = pd.DataFrame(st.session_state.scanned_barcodes, columns=["Barcodes"])
     scanned_df["Actual Quantity"] = 1
     scanned_df = scanned_df.groupby("Barcodes").sum().reset_index()
 
-    # Merge scanned data with original sheet
+    # Merge
     merged = pd.merge(df, scanned_df, on="Barcodes", how="left")
+
+    # ✅ تأكيد الأعمدة بعد الدمج
+    st.write("🔍 Merged columns:", merged.columns.tolist())
+
+    if "Actual Quantity" not in merged.columns:
+        st.warning("⚠️ 'Actual Quantity' column is missing after merge.")
+        merged["Actual Quantity"] = 0
+
+    # الحساب
     merged["Actual Quantity"] = merged["Actual Quantity"].fillna(0).astype(int)
     merged["Difference"] = merged["Actual Quantity"] - merged["Available Quantity"]
 
-    # Show original sheet and live updates
+    # Show
     st.subheader("📋 Updated Inventory Sheet")
     st.dataframe(merged)
 
