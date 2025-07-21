@@ -40,7 +40,7 @@ if "df" in st.session_state:
     df = st.session_state.df
     st.subheader("🔍 Scan Barcode")
 
-    barcode = st.text_input("📷 Scan barcode here", value="", key="barcode_input")
+    barcode = st.text_input("📷 Scan barcode here", value="")
 
     if barcode:
         barcode = barcode.strip()
@@ -50,7 +50,9 @@ if "df" in st.session_state:
             st.success(f"✅ Barcode scanned: {barcode}")
         else:
             st.warning(f"⚠️ Barcode not found: {barcode}")
-        st.session_state.barcode_input = ""
+
+        # إعادة تحميل الصفحة لمسح قيمة الإدخال
+        st.experimental_rerun()
 
     st.dataframe(df, use_container_width=True)
 
