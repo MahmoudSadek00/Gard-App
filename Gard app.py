@@ -1,12 +1,10 @@
 import streamlit as st
 import pandas as pd
 import io
-import json
 
 st.set_page_config(page_title="Inventory Scanner with html5-qrcode", layout="wide")
 st.title("📦 Inventory Scanner with Camera (html5-qrcode)")
 
-# رفع ملف الإكسل أو CSV
 uploaded_file = st.file_uploader("Upload your inventory file (Excel or CSV)", type=["csv", "xlsx"])
 if uploaded_file:
     if uploaded_file.name.endswith(".csv"):
@@ -14,7 +12,6 @@ if uploaded_file:
     else:
         df = pd.read_excel(uploaded_file)
 
-    # تحقق من الأعمدة المطلوبة
     if not {"Barcodes", "Available Quantity"}.issubset(df.columns):
         st.error("File must contain 'Barcodes' and 'Available Quantity' columns.")
         st.stop()
@@ -29,11 +26,8 @@ if uploaded_file:
         st.session_state.df = df
 
     df = st.session_state.df
-
-    # مساحة لعرض رسالة سكان باركود من html5-qrcode
     scanned_barcode = st.empty()
 
-    # Html+JS لكاميرا سكانر باستخدام مكتبة html5-qrcode
     html_code = """
     <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
     <div id="reader" style="width: 400px;"></div>
@@ -56,18 +50,9 @@ if uploaded_file:
     </script>
     """
 
-    # استقبال الباركود المرسل من JS داخل البايثون
-    barcode = st.experimental_get_query_params().get("barcode", [None])[0]
+    barcode = st.query_params.get("barcode", [None])[0]
 
-    # تعريف دالة JS listener
     st.components.v1.html(html_code, height=450)
-
-    # Handle barcode reception using Streamlit's custom event listener workaround
-    # لكن Streamlit لا يدعم JS event مباشر، الحل إنك تبعت قيمة للبايثون عن طريق استخدام 
-    # trick بإعادة تحميل الصفحة مع باراميتر ?barcode=xxx
-    # لكن ده غير عملي في حالة سكان مستمر.
-
-    # بديل بسيط: إظهار خانة إدخال للمستخدم يدخل الباركود أو يلصقه يدوياً لو قراءة الكاميرا بطلت شغالة.
 
     manual_barcode = st.text_input("Or enter barcode manually:")
 
@@ -88,7 +73,6 @@ if uploaded_file:
 
     st.dataframe(df, use_container_width=True)
 
-    # زر تحميل الملف النهائي
     buffer = io.BytesIO()
     df.to_excel(buffer, index=False)
     st.download_button(
