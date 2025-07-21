@@ -1,68 +1,83 @@
 import streamlit as st
 import pandas as pd
-from streamlit.components.v1 import html
+import datetime
 
-st.set_page_config(page_title="📦 Inventory Scanner", layout="wide")
-st.title("📷 Barcode Scanner - Inventory App")
+st.set_page_config(page_title="Inventory Scanner App", layout="wide")
+st.title("📦 Inventory Scanner with Camera")
 
-# Upload initial inventory file
-uploaded_file = st.file_uploader("Upload Inventory File (Excel)", type=["xlsx"])
+# جلسة لتخزين البيانات
+if "df" not in st.session_state:
+    st.session_state.df = None
+if "scanned" not in st.session_state:
+    st.session_state.scanned = {}
+
+# رفع ملف المنتجات
+uploaded_file = st.file_uploader("📄 Upload Product File (Excel/CSV)", type=["xlsx", "xls", "csv"])
 if uploaded_file:
-    df = pd.read_excel(uploaded_file)
-    if "Barcodes" not in df.columns or "Available Quantity" not in df.columns:
-        st.error("File must contain 'Barcodes' and 'Available Quantity' columns.")
-        st.stop()
-
-    if "Actual Quantity" not in df.columns:
+    if uploaded_file.name.endswith(".csv"):
+        df = pd.read_csv(uploaded_file)
+    else:
+        df = pd.read_excel(uploaded_file)
+    
+    # تأكد من الأعمدة
+    if "Barcodes" in df.columns and "Available Quantity" in df.columns:
         df["Actual Quantity"] = 0
-    if "Difference" not in df.columns:
-        df["Difference"] = df["Actual Quantity"] - df["Available Quantity"]
+        st.session_state.df = df
+    else:
+        st.error("❌ File must contain 'Barcodes' and 'Available Quantity' columns.")
 
-    st.subheader("📦 Inventory Table")
-    table_placeholder = st.empty()
-
-    # JavaScript barcode scanner
-    st.markdown("### Scan a barcode")
-    html(
+# لو الداتا موجودة
+if st.session_state.df is not None:
+    st.markdown("### 📷 Scan Product Barcode")
+    
+    # زر لتشغيل الكاميرا
+    st.markdown(
         """
-        <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
-        <div id="reader" style="width:300px"></div>
+        <div id="reader" width="600px"></div>
+        <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
         <script>
-            const qrcode = new Html5Qrcode("reader");
-            const config = { fps: 10, qrbox: 250 };
-            qrcode.start(
-                { facingMode: "environment" },
-                config,
-                (decodedText, decodedResult) => {
-                    const input = window.parent.document.querySelector('input[data-testid="stTextInput"]');
-                    if (input) {
-                        input.value = decodedText;
-                        input.dispatchEvent(new Event('input', { bubbles: true }));
-                    }
-                },
-                errorMessage => {}
-            ).catch(err => {});
+        function onScanSuccess(decodedText, decodedResult) {
+            const barcodeInput = window.parent.document.querySelector('input[data-testid="stTextInput"]');
+            if (barcodeInput) {
+                barcodeInput.value = decodedText;
+                const event = new Event('input', { bubbles: true });
+                barcodeInput.dispatchEvent(event);
+            }
+        }
+
+        const html5QrcodeScanner = new Html5QrcodeScanner(
+            "reader", { fps: 10, qrbox: 250 }, false);
+        html5QrcodeScanner.render(onScanSuccess);
         </script>
         """,
-        height=400,
+        unsafe_allow_html=True,
     )
 
-    barcode = st.text_input("Scanned Barcode")
+    barcode = st.text_input("Or enter barcode manually:")
 
     if barcode:
-        # تحديث الكمية الفعلية
+        df = st.session_state.df
+        # لو الباركود موجود في الجدول
         if barcode in df["Barcodes"].values:
             df.loc[df["Barcodes"] == barcode, "Actual Quantity"] += 1
-            df["Difference"] = df["Actual Quantity"] - df["Available Quantity"]
+            st.success(f"✅ Scanned: {barcode}")
         else:
-            st.warning(f"Barcode {barcode} not found in file.")
+            st.warning(f"⚠️ Barcode not found: {barcode}")
+        st.session_state.df = df  # تحديث الجلسة
 
-        table_placeholder.dataframe(df)
+    # جدول النتيجة
+    df = st.session_state.df
+    df["Difference"] = df["Actual Quantity"] - df["Available Quantity"]
+    st.dataframe(df, use_container_width=True)
 
-        # زر تحميل النتيجة
-        output_file = "inventory_with_actual.xlsx"
-        df.to_excel(output_file, index=False)
+    # تحميل إكسل
+    @st.cache_data
+    def to_excel(df):
+        return df.to_excel(index=False, engine='xlsxwriter')
 
-        with open(output_file, "rb") as f:
-            st.download_button("📥 Download Updated File", f, file_name="Inventory_Updated.xlsx")
-
+    st.download_button(
+        "⬇️ Download Excel Report",
+        to_excel(df),
+        file_name=f"inventory_report_{datetime.datetime.now().date()}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
