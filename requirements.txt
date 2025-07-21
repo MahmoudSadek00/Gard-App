@@ -4,3 +4,4 @@ openpyxl
 xlsxwriter
 streamlit-webrtc
 opencv-python-headless
+pyzbar
