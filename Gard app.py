@@ -52,10 +52,7 @@ if uploaded_file:
     if "Difference" in df.columns:
         df["Difference"] = df["Actual Quantity"] - df["Available Quantity"]
 
-    # عرض
-    st.subheader("✅ Scanned Barcodes")
-    st.write(st.session_state.scanned_barcodes)
-
+    # عرض الشيت
     st.subheader("📋 Updated Sheet")
     st.dataframe(df)
 
