@@ -13,6 +13,8 @@ if "selected_sheet" not in st.session_state:
     st.session_state.selected_sheet = None
 if "df" not in st.session_state:
     st.session_state.df = pd.DataFrame()
+if "barcode_input" not in st.session_state:
+    st.session_state.barcode_input = ""
 
 # ------------------------ Upload Excel File ------------------------ #
 uploaded_file = st.file_uploader("Upload Inventory Excel File", type=["xlsx"])
@@ -45,7 +47,7 @@ if st.session_state.excel_file:
 # ------------------------ Barcode Input ------------------------ #
 if not st.session_state.df.empty:
     st.subheader("🔍 Scan or Enter Barcode")
-    barcode = st.text_input("Enter or Scan Barcode")
+    barcode = st.text_input("Enter or Scan Barcode", key="barcode_input")
 
     if barcode:
         df = st.session_state.df.copy()
@@ -58,10 +60,8 @@ if not st.session_state.df.empty:
             st.warning("⚠️ Barcode not found.")
 
         st.session_state.df = df
-
-        # force clear input field by rerunning page without preserving value
-        st.experimental_set_query_params(barcode="")  # dummy trick
-        st.stop()
+        st.session_state.barcode_input = ""  # Clear the input without rerun
+        st.experimental_rerun()  # Safe rerun
 
 # ------------------------ Show Table ------------------------ #
 if not st.session_state.df.empty:
