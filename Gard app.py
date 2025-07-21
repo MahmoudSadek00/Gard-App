@@ -4,30 +4,30 @@ import pandas as pd
 st.set_page_config(page_title="📦 Inventory Scanner", layout="wide")
 st.title("📦 Domanza Inventory App with Camera")
 
-# Session state setup
+# Session state
 if 'scanned_barcodes' not in st.session_state:
     st.session_state.scanned_barcodes = []
 
-# File upload
+# File uploader
 uploaded_file = st.file_uploader("Upload Inventory Excel File", type=["xlsx"])
 
 if uploaded_file:
     all_sheets = pd.read_excel(uploaded_file, sheet_name=None)
     sheet_names = list(all_sheets.keys())
-
     selected_sheet = st.selectbox("Select Brand Sheet", sheet_names)
     df = all_sheets[selected_sheet]
     df.columns = df.columns.str.strip()
 
-    if "Barcodes" not in df.columns or "Available Quantity" not in df.columns:
-        st.error("❌ Sheet must contain 'Barcodes' and 'Available Quantity' columns.")
+    if "Barcodes" not in df.columns or "Available Quantity" not in df.columns or "Actual Quantity" not in df.columns:
+        st.error("❌ Sheet must contain 'Barcodes', 'Available Quantity', and 'Actual Quantity' columns.")
         st.write("Available columns:", df.columns.tolist())
         st.stop()
 
-    # تحويل الباركود لنص وشيل المسافات
+    # تنظيف الباركود
     df["Barcodes"] = df["Barcodes"].astype(str).str.strip()
+    df["Actual Quantity"] = df["Actual Quantity"].fillna(0).astype(int)
 
-    # Barcode input
+    # سكان باركود
     st.markdown("### 📸 Scan Barcode")
     barcode_input = st.text_input("Scan Here", value="", label_visibility="collapsed")
 
@@ -36,34 +36,33 @@ if uploaded_file:
         st.session_state.scanned_barcodes.append(barcode_input)
         st.text_input("Last Scanned", value=barcode_input, disabled=True)
 
-    # Process scanned barcodes
+    # تجهيز السكان
     scanned_df = pd.DataFrame(st.session_state.scanned_barcodes, columns=["Barcodes"])
     scanned_df["Barcodes"] = scanned_df["Barcodes"].astype(str).str.strip()
     scanned_df["Actual Quantity"] = 1
     scanned_df = scanned_df.groupby("Barcodes").sum().reset_index()
 
-    # Merge
-    merged = pd.merge(df, scanned_df, on="Barcodes", how="left")
+    # تحديث الشيت الأصلي مباشرة
+    for _, row in scanned_df.iterrows():
+        barcode = row["Barcodes"]
+        count = row["Actual Quantity"]
+        df.loc[df["Barcodes"] == barcode, "Actual Quantity"] = count
 
-    if "Actual Quantity" not in merged.columns:
-        st.warning("⚠️ 'Actual Quantity' column is missing after merge.")
-        merged["Actual Quantity"] = 0
+    # تحديث الفرق تلقائي
+    if "Difference" in df.columns:
+        df["Difference"] = df["Actual Quantity"] - df["Available Quantity"]
 
-    # الحساب
-    merged["Actual Quantity"] = merged["Actual Quantity"].fillna(0).astype(int)
-    merged["Difference"] = merged["Actual Quantity"] - merged["Available Quantity"]
-
-    # Show scanned barcodes and comparison
-    st.subheader("✅ Scanned Barcodes:")
+    # عرض
+    st.subheader("✅ Scanned Barcodes")
     st.write(st.session_state.scanned_barcodes)
 
-    st.subheader("📋 Updated Inventory Sheet")
-    st.dataframe(merged)
+    st.subheader("📋 Updated Sheet")
+    st.dataframe(df)
 
-    # Download CSV
+    # تحميل
     @st.cache_data
     def convert_df_to_csv(df):
         return df.to_csv(index=False).encode("utf-8")
 
-    csv = convert_df_to_csv(merged)
-    st.download_button("📥 Download Updated Inventory (CSV)", data=csv, file_name="updated_inventory.csv", mime="text/csv")
+    csv = convert_df_to_csv(df)
+    st.download_button("📥 Download Updated Sheet", data=csv, file_name="updated_inventory.csv", mime="text/csv")
