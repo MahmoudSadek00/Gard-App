@@ -5,7 +5,7 @@ import io
 st.set_page_config(page_title="📦 Inventory Scanner", layout="wide")
 st.title("📦 Inventory Scanner App")
 
-# خطوة 1: رفع الملف
+# Step 1: رفع الملف
 uploaded_file = st.file_uploader("Upload your inventory file", type=["csv", "xlsx"])
 
 if uploaded_file and "df" not in st.session_state:
@@ -15,7 +15,7 @@ if uploaded_file and "df" not in st.session_state:
         else:
             df = pd.read_excel(uploaded_file)
 
-        # تحقق من الأعمدة
+        # تأكد من وجود الأعمدة المطلوبة
         if "Barcodes" not in df.columns or "Available Quantity" not in df.columns:
             st.error("⚠️ File must include 'Barcodes' and 'Available Quantity'")
             st.stop()
@@ -23,6 +23,7 @@ if uploaded_file and "df" not in st.session_state:
         df["Actual Quantity"] = 0
         df["Difference"] = df["Actual Quantity"] - df["Available Quantity"]
         st.session_state.df = df
+        st.session_state.barcode_input = ""
 
         st.success("✅ File loaded successfully!")
 
@@ -30,13 +31,13 @@ if uploaded_file and "df" not in st.session_state:
         st.error(f"Error reading file: {e}")
         st.stop()
 
-# خطوة 2: سكان باركود
+# Step 2: سكان الباركود
 if "df" in st.session_state:
     df = st.session_state.df
     st.subheader("📸 Scan Barcode")
 
-    # حقل الإدخال
-    barcode = st.text_input("Scan or enter barcode", key="barcode_input")
+    # حقل إدخال الباركود
+    barcode = st.text_input("Scan or enter barcode", value=st.session_state.get("barcode_input", ""), key="barcode_input")
 
     if barcode:
         barcode = barcode.strip()
@@ -48,9 +49,10 @@ if "df" in st.session_state:
         else:
             st.warning(f"❌ Barcode '{barcode}' not found.")
 
-        # إعادة تشغيل لمسح القيمة بعد المعالجة
-        st.experimental_rerun()
+        # امسح القيمة يدويًا بدل rerun
+        st.session_state.barcode_input = ""
 
+    # عرض الجدول
     st.dataframe(df, use_container_width=True)
 
     # زر التحميل
