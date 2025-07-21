@@ -4,9 +4,9 @@ import pandas as pd
 st.set_page_config(page_title="📦 Inventory Scanner", layout="wide")
 st.title("📦 Domanza Inventory App with Camera")
 
-# Session state to track scanned barcodes and input
-if 'scanned_barcodes' not in st.session_state:
-    st.session_state.scanned_barcodes = []
+# Session state to track scanned barcodes and counts
+if 'barcode_counts' not in st.session_state:
+    st.session_state.barcode_counts = {}
 if 'barcode_input' not in st.session_state:
     st.session_state.barcode_input = ""
 
@@ -40,19 +40,25 @@ if uploaded_file:
 
     if st.session_state.barcode_input:
         scanned = st.session_state.barcode_input.strip()
-        st.session_state.scanned_barcodes.append(scanned)
 
+        # زيادة العدد في قاموس الباركودات
+        if scanned in st.session_state.barcode_counts:
+            st.session_state.barcode_counts[scanned] += 1
+        else:
+            st.session_state.barcode_counts[scanned] = 1
+
+        # تحديث Actual Quantity في الجدول
         if scanned in df["Barcodes"].values:
-            df.loc[df["Barcodes"] == scanned, "Actual Quantity"] += 1
+            count = st.session_state.barcode_counts[scanned]
+            df.loc[df["Barcodes"] == scanned, "Actual Quantity"] = count
             product_name_display = df.loc[df["Barcodes"] == scanned, "Product Name"].values[0]
         else:
             product_name_display = "❌ Not Found"
 
-        # Reset input safely inside the block
+        # Reset input
         st.session_state.barcode_input = ""
 
     with cols[1]:
-        # عرض اسم المنتج بشكل منور
         st.markdown(f"""
             <div style="padding: 0.75rem 1rem; background-color: #e6f4ea; border: 2px solid #2e7d32;
                         border-radius: 5px; font-weight: bold; font-size: 16px;">
@@ -66,6 +72,13 @@ if uploaded_file:
     # عرض الجدول النهائي
     st.subheader("📋 Updated Sheet")
     st.dataframe(df)
+
+    # عرض الباركودات المتسكانة وعددها
+    st.markdown("### ✅ Scanned Barcode Log")
+    st.write(pd.DataFrame([
+        {"Barcode": k, "Scanned Count": v}
+        for k, v in st.session_state.barcode_counts.items()
+    ]))
 
     # زر التحميل
     @st.cache_data
