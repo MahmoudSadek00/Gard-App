@@ -40,19 +40,9 @@ if uploaded_file:
         barcode_input = barcode_input.strip()
         st.session_state.scanned_barcodes.append(barcode_input)  # خزن الباركود داخليًا
 
-        # حساب عدد مرات تكراره
-        scanned_df = pd.DataFrame(st.session_state.scanned_barcodes, columns=["Barcodes"])
-        scanned_df["Actual Quantity"] = 1
-        scanned_df = scanned_df.groupby("Barcodes").sum().reset_index()
-
-        # تحديث الكميات
-        for _, row in scanned_df.iterrows():
-            barcode = row["Barcodes"]
-            count = row["Actual Quantity"]
-            df.loc[df["Barcodes"] == barcode, "Actual Quantity"] = count
-
-        # عرض اسم المنتج المنور
         if barcode_input in df["Barcodes"].values:
+            # زود 1 مباشرة
+            df.loc[df["Barcodes"] == barcode_input, "Actual Quantity"] += 1
             product_name_display = df.loc[df["Barcodes"] == barcode_input, "Product Name"].values[0]
         else:
             product_name_display = "❌ Not Found"
@@ -67,8 +57,7 @@ if uploaded_file:
         """, unsafe_allow_html=True)
 
     # تحديث الفرق
-    if "Difference" in df.columns:
-        df["Difference"] = df["Actual Quantity"] - df["Available Quantity"]
+    df["Difference"] = df["Actual Quantity"] - df["Available Quantity"]
 
     # عرض الجدول النهائي
     st.subheader("📋 Updated Sheet")
