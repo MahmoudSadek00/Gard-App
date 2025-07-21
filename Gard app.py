@@ -2,59 +2,77 @@ import streamlit as st
 import pandas as pd
 import io
 
-st.set_page_config(page_title="📦 Inventory Scanner", layout="wide")
-st.title("📦 Inventory Scanner App")
+st.set_page_config(page_title="Inventory Scanner with Camera", layout="wide")
+st.title("📦 Inventory Scanner with Camera (HTML5 QR Code)")
 
-# Step 1: Upload file
-uploaded_file = st.file_uploader("Upload your inventory file", type=["csv", "xlsx"])
+# رفع ملف الإكسل أو CSV
+uploaded_file = st.file_uploader("Upload your inventory file (Excel or CSV)", type=["xlsx", "csv"])
 
-if uploaded_file and "df" not in st.session_state:
-    try:
-        if uploaded_file.name.endswith(".csv"):
-            df = pd.read_csv(uploaded_file)
-        else:
-            df = pd.read_excel(uploaded_file)
+if uploaded_file:
+    if uploaded_file.name.endswith(".csv"):
+        df = pd.read_csv(uploaded_file)
+    else:
+        df = pd.read_excel(uploaded_file)
 
-        if "Barcodes" not in df.columns or "Available Quantity" not in df.columns:
-            st.error("⚠️ File must include 'Barcodes' and 'Available Quantity'")
-            st.stop()
-
-        df["Actual Quantity"] = 0
-        df["Difference"] = df["Actual Quantity"] - df["Available Quantity"]
-        st.session_state.df = df
-        st.success("✅ File loaded successfully!")
-
-    except Exception as e:
-        st.error(f"Error reading file: {e}")
+    # تحقق من الأعمدة المطلوبة
+    required_cols = ['Barcodes', 'Available Quantity']
+    if not all(col in df.columns for col in required_cols):
+        st.error(f"File must contain these columns: {required_cols}")
         st.stop()
 
-def process_barcode():
-    barcode = st.session_state.barcode_input.strip()
-    if len(barcode) == 9:
+    # اضف عمود Actual Quantity إذا مش موجود
+    if 'Actual Quantity' not in df.columns:
+        df['Actual Quantity'] = 0
+    if 'Difference' not in df.columns:
+        df['Difference'] = df['Actual Quantity'] - df['Available Quantity']
+
+    # خزن الداتا في session_state
+    st.session_state.df = df
+
+    # عنصر html لقراءة الباركود باستخدام كاميرا الموبايل
+    barcode_html = """
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <div style="width: 100%; max-width: 500px;" id="reader"></div>
+    <script>
+        function onScanSuccess(decodedText, decodedResult) {
+            // إرسال القيمة للستريمليت عبر تحديث عنوان الصفحة (URL)
+            window.parent.postMessage({barcode: decodedText}, "*");
+            // لإيقاف المسح مؤقتاً
+            html5QrcodeScanner.clear();
+        }
+        var html5QrcodeScanner = new Html5QrcodeScanner(
+            "reader", { fps: 10, qrbox: 250 }, /* verbose= */ false);
+        html5QrcodeScanner.render(onScanSuccess);
+    </script>
+    """
+
+    # نعرض ال html داخل Streamlit
+    st.components.v1.html(barcode_html, height=400)
+
+    # استقبال الباركود المرسل من الـ JS
+    from streamlit_javascript import st_javascript
+    scanned_code = st_javascript("window.addEventListener('message', event => { if(event.data.barcode) { window.streamlit.setComponentValue(event.data.barcode); } });")
+
+    if scanned_code:
+        # كل مرة يتم سكان يتضاف لل Actual Quantity
         df = st.session_state.df
+        barcode = scanned_code.strip()
         if barcode in df["Barcodes"].astype(str).values:
             df.loc[df["Barcodes"].astype(str) == barcode, "Actual Quantity"] += 1
             df["Difference"] = df["Actual Quantity"] - df["Available Quantity"]
             st.session_state.df = df
-            st.success(f"✅ Barcode {barcode} counted.")
+            st.success(f"Barcode {barcode} counted!")
         else:
-            st.warning(f"❌ Barcode '{barcode}' not found.")
-    # Clear input to allow next scan immediately
-    st.session_state.barcode_input = ""
+            st.warning(f"Barcode {barcode} not found in inventory.")
 
-if "df" in st.session_state:
-    st.subheader("📸 Scan Barcode")
-    barcode_input = st.text_input("Scan or enter barcode", key="barcode_input", on_change=process_barcode)
+    # عرض الجدول المحدث
+    st.dataframe(st.session_state.df)
 
-    # Show dataframe below input
-    st.dataframe(st.session_state.df, use_container_width=True)
-
-    # Download button
+    # زر تحميل الملف النهائي
     buffer = io.BytesIO()
     st.session_state.df.to_excel(buffer, index=False)
-    st.download_button(
-        label="📥 Download Updated File",
-        data=buffer.getvalue(),
-        file_name="updated_inventory.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+    st.download_button("Download updated inventory", buffer.getvalue(), "updated_inventory.xlsx")
+
+else:
+    st.info("Please upload your inventory file to start scanning.")
+
