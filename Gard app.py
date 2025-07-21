@@ -1,84 +1,100 @@
 import streamlit as st
 import pandas as pd
-from io import BytesIO
 
 st.set_page_config(page_title="📦 Inventory Scanner", layout="wide")
-st.title("📦 Domanza Inventory Application")
+st.title("📦 Domanza Inventory App with Camera")
 
-# تحميل ملف الإكسل
-uploaded_file = st.file_uploader("⬆️ Upload Inventory Excel File", type=["xlsx"])
+# Session state to track scanned barcodes and counts
+if 'barcode_counts' not in st.session_state:
+    st.session_state.barcode_counts = {}
+if 'barcode_input' not in st.session_state:
+    st.session_state.barcode_input = ""
+if 'df' not in st.session_state:
+    st.session_state.df = None
 
-if uploaded_file:
-    # قراءة الملف
-    xls = pd.ExcelFile(uploaded_file)
-    sheet_names = xls.sheet_names
+# File uploader
+uploaded_file = st.file_uploader("Upload Inventory Excel File", type=["xlsx"])
 
-    # اختيار الشيت
-    selected_sheet = st.selectbox("اختر الشيت:", sheet_names)
+if uploaded_file and st.session_state.df is None:
+    all_sheets = pd.read_excel(uploaded_file, sheet_name=None)
+    sheet_names = list(all_sheets.keys())
+    selected_sheet = st.selectbox("Select Brand Sheet", sheet_names)
+    df = all_sheets[selected_sheet]
+    df.columns = df.columns.str.strip()
 
-    if selected_sheet:
-        df = xls.parse(selected_sheet)
+    required_columns = ["Barcodes", "Available Quantity", "Actual Quantity", "Product Name"]
+    if not all(col in df.columns for col in required_columns):
+        st.error(f"❌ Sheet must contain these columns: {required_columns}")
+        st.write("Available columns:", df.columns.tolist())
+        st.stop()
 
-        # تنظيف أسماء الأعمدة
-        df.columns = df.columns.astype(str).str.strip()
-        df.columns = df.columns.str.replace('“|”|\"|\'', '', regex=True)
+    # تنظيف الأعمدة
+    df["Barcodes"] = df["Barcodes"].astype(str).str.strip()
+    df["Actual Quantity"] = df["Actual Quantity"].fillna(0).astype(int)
 
-        # طباعة الأعمدة الحقيقية
-        st.write("📋 Actual columns read:", df.columns.tolist())
+    st.session_state.df = df.copy()
 
-        # التحقق من الأعمدة المطلوبة
-        if not {"Barcodes", "Available Quantity"}.issubset(df.columns):
-            st.error("❌ الشيت لازم يحتوي على الأعمدة: Barcodes و Available Quantity")
-            st.stop()
+if st.session_state.df is not None:
+    df = st.session_state.df  # اشتغل على النسخة الموجودة في السيشن
 
-        # إنشاء session state للبيانات الممسوحة
-        if "scanned_data" not in st.session_state:
-            st.session_state.scanned_data = pd.DataFrame(columns=["Barcodes", "Available Quantity", "Actual Quantity"])
+    # سكان باركود
+    st.markdown("### 📸 Scan Barcode")
+    scanned = st.text_input("Scan Barcode", value=st.session_state.barcode_input)
+    
+    product_name_display = ""
 
-        # إدخال الباركود
-        barcode_input = st.text_input("🧪 Scan Barcode", key="barcode_input")
+    if scanned:
+        scanned = scanned.strip()
 
-        # تحديث الجدول عند إدخال باركود
-        if barcode_input:
-            match = df[df["Barcodes"].astype(str) == barcode_input]
-            if not match.empty:
-                qty = st.number_input("📝 Actual Quantity", min_value=0, step=1, key="qty_input")
-                if st.button("➕ Add"):
-                    new_row = {
-                        "Barcodes": barcode_input,
-                        "Available Quantity": int(match["Available Quantity"].values[0]),
-                        "Actual Quantity": qty
-                    }
-                    st.session_state.scanned_data = pd.concat(
-                        [st.session_state.scanned_data, pd.DataFrame([new_row])],
-                        ignore_index=True
-                    )
-                    st.experimental_rerun()
-            else:
-                st.warning("❌ الباركود غير موجود في الشيت.")
+        # زيادة العدد في قاموس الباركودات
+        if scanned in st.session_state.barcode_counts:
+            st.session_state.barcode_counts[scanned] += 1
+        else:
+            st.session_state.barcode_counts[scanned] = 1
 
-        # عرض البيانات الممسوحة
-        if not st.session_state.scanned_data.empty:
-            st.dataframe(st.session_state.scanned_data, use_container_width=True)
+        # تحديث Actual Quantity في الجدول
+        if scanned in df["Barcodes"].values:
+            count = st.session_state.barcode_counts[scanned]
+            df.loc[df["Barcodes"] == scanned, "Actual Quantity"] = count
+            product_name_display = df.loc[df["Barcodes"] == scanned, "Product Name"].values[0]
+        else:
+            product_name_display = "❌ Not Found"
 
-            # تحميل البيانات النهائية
-            def convert_df(df):
-                output = BytesIO()
-                writer = pd.ExcelWriter(output, engine='xlsxwriter')
-                df["Difference"] = df["Actual Quantity"] - df["Available Quantity"]
-                df.to_excel(writer, index=False, sheet_name='Scanned Data')
-                writer.close()
-                output.seek(0)
-                return output
+        # حفظ التحديث
+        st.session_state.df = df
 
-            st.download_button(
-                label="⬇️ Download Results",
-                data=convert_df(st.session_state.scanned_data),
-                file_name="scanned_inventory.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
+        # Reset input
+        st.session_state.barcode_input = ""
+    else:
+        st.session_state.barcode_input = scanned
 
-        # زرار للمسح
-        if st.button("🧹 Clear All"):
-            st.session_state.scanned_data = pd.DataFrame(columns=["Barcodes", "Available Quantity", "Actual Quantity"])
-            st.experimental_rerun()
+    # عرض اسم المنتج تحت سكان الباركود
+    st.markdown("#### 🏷️ Product Name")
+    st.markdown(f"""
+        <div style="padding: 0.75rem 1rem; background-color: #e6f4ea; border: 2px solid #2e7d32;
+                    border-radius: 5px; font-weight: bold; font-size: 16px;">
+            {product_name_display}
+        </div>
+    """, unsafe_allow_html=True)
+
+    # تحديث الفرق
+    df["Difference"] = df["Actual Quantity"] - df["Available Quantity"]
+
+    # عرض الجدول النهائي
+    st.subheader("📋 Updated Sheet")
+    st.dataframe(df)
+
+    # عرض الباركودات المتسكانة وعددها
+    st.markdown("### ✅ Scanned Barcode Log")
+    st.write(pd.DataFrame([
+        {"Barcode": k, "Scanned Count": v}
+        for k, v in st.session_state.barcode_counts.items()
+    ]))
+
+    # زر التحميل
+    @st.cache_data
+    def convert_df_to_csv(df):
+        return df.to_csv(index=False).encode("utf-8")
+
+    csv = convert_df_to_csv(df)
+    st.download_button("📥 Download Updated Sheet", data=csv, file_name="updated_inventory.csv", mime="text/csv")
