@@ -77,4 +77,11 @@ if "sheets_data" in st.session_state:
     buffer.seek(0)
 
     today = datetime.today().strftime("%Y-%m-%d")
-    file_name = f"Inven_
+    file_name = f"Inventory_{today}.xlsx"
+
+    st.download_button(
+        label="📥 Download Final Inventory Excel",
+        data=buffer.getvalue(),
+        file_name=file_name,
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
