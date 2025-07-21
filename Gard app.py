@@ -23,37 +23,34 @@ if uploaded_file:
         st.error("The sheet must contain 'Barcodes' and 'Available Quantity' columns.")
         st.stop()
 
-    # Show original sheet
-    st.subheader("📋 Original Inventory Sheet")
-    st.dataframe(df)
-
-    # Barcode input
+    # Barcode input comes first (before table)
     st.markdown("### 📸 Scan Barcode")
     barcode_input = st.text_input("Scan Here", value="", label_visibility="collapsed")
 
     if barcode_input:
         st.session_state.scanned_barcodes.append(barcode_input)
-        st.experimental_rerun()
+        # Clear input manually by forcing empty
+        st.text_input("Last Scanned", value=barcode_input, disabled=True)
+        barcode_input = ""  # Reset local var
 
     # Process scanned barcodes
     scanned_df = pd.DataFrame(st.session_state.scanned_barcodes, columns=["Barcodes"])
     scanned_df["Actual Quantity"] = 1
     scanned_df = scanned_df.groupby("Barcodes").sum().reset_index()
 
-    if not scanned_df.empty:
-        merged = pd.merge(df, scanned_df, on="Barcodes", how="left")
-        merged["Actual Quantity"] = merged["Actual Quantity"].fillna(0).astype(int)
-        merged["Difference"] = merged["Actual Quantity"] - merged["Available Quantity"]
+    # Merge scanned data with original sheet
+    merged = pd.merge(df, scanned_df, on="Barcodes", how="left")
+    merged["Actual Quantity"] = merged["Actual Quantity"].fillna(0).astype(int)
+    merged["Difference"] = merged["Actual Quantity"] - merged["Available Quantity"]
 
-        st.subheader("📊 Updated Inventory After Scanning")
-        st.dataframe(merged)
+    # Show original sheet and live updates
+    st.subheader("📋 Updated Inventory Sheet")
+    st.dataframe(merged)
 
-        # Download CSV
-        @st.cache_data
-        def convert_df_to_csv(df):
-            return df.to_csv(index=False).encode("utf-8")
+    # Download CSV
+    @st.cache_data
+    def convert_df_to_csv(df):
+        return df.to_csv(index=False).encode("utf-8")
 
-        csv = convert_df_to_csv(merged)
-        st.download_button("📥 Download Updated Inventory (CSV)", data=csv, file_name="updated_inventory.csv", mime="text/csv")
-    else:
-        st.info("Waiting for barcode scan...")
+    csv = convert_df_to_csv(merged)
+    st.download_button("📥 Download Updated Inventory (CSV)", data=csv, file_name="updated_inventory.csv", mime="text/csv")
