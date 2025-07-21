@@ -2,35 +2,41 @@ import streamlit as st
 import pandas as pd
 import io
 
-st.set_page_config(page_title="Inventory Scanner with html5-qrcode", layout="wide")
-st.title("📦 Inventory Scanner with Camera (html5-qrcode)")
+st.set_page_config(page_title="📦 Inventory Scanner", layout="wide")
+st.title("📦 Inventory Scanner App")
 
-uploaded_file = st.file_uploader("Upload your inventory file (Excel or CSV)", type=["csv", "xlsx"])
-if uploaded_file:
-    if uploaded_file.name.endswith(".csv"):
-        df = pd.read_csv(uploaded_file)
-    else:
-        df = pd.read_excel(uploaded_file)
+# رفع ملف الجرد
+uploaded_file = st.file_uploader("Upload your inventory file", type=["csv", "xlsx"])
 
-    if not {"Barcodes", "Available Quantity"}.issubset(df.columns):
-        st.error("File must contain 'Barcodes' and 'Available Quantity' columns.")
+if uploaded_file and "df" not in st.session_state:
+    try:
+        if uploaded_file.name.endswith(".csv"):
+            df = pd.read_csv(uploaded_file)
+        else:
+            df = pd.read_excel(uploaded_file)
+
+        if "Barcodes" not in df.columns or "Available Quantity" not in df.columns:
+            st.error("⚠️ File must include 'Barcodes' and 'Available Quantity' columns.")
+            st.stop()
+
+        df["Actual Quantity"] = 0
+        df["Difference"] = df["Actual Quantity"] - df["Available Quantity"]
+        st.session_state.df = df
+        st.success("✅ File loaded successfully!")
+
+    except Exception as e:
+        st.error(f"Error reading file: {e}")
         st.stop()
 
-    if "Actual Quantity" not in df.columns:
-        df["Actual Quantity"] = 0
-
-    if "Difference" not in df.columns:
-        df["Difference"] = df["Actual Quantity"] - df["Available Quantity"]
-
-    if "df" not in st.session_state:
-        st.session_state.df = df
-
+if "df" in st.session_state:
     df = st.session_state.df
-    scanned_barcode = st.empty()
 
+    st.subheader("📸 Scan Barcode (Camera & Input)")
+
+    # مربع كاميرا بحجم أصغر
     html_code = """
     <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
-    <div id="reader" style="width: 400px;"></div>
+    <div id="reader" style="width: 250px; margin: auto;"></div>
     <script>
     function sendBarcode(barcode) {
         const streamlitEvent = new CustomEvent("barcode_scanned", {detail: barcode});
@@ -39,7 +45,7 @@ if uploaded_file:
 
     let lastResult = null;
     const html5QrcodeScanner = new Html5QrcodeScanner(
-        "reader", { fps: 10, qrbox: 250 });
+        "reader", { fps: 10, qrbox: 200 });
 
     html5QrcodeScanner.render((decodedText, decodedResult) => {
         if (decodedText !== lastResult) {
@@ -50,37 +56,44 @@ if uploaded_file:
     </script>
     """
 
-    barcode = st.query_params.get("barcode", [None])[0]
+    # استيراد المكون المخصص
+    barcode = st.experimental_get_query_params().get("barcode", [""])[0]
 
-    st.components.v1.html(html_code, height=450)
+    # استماع لحدث سكان الباركود
+    st.components.v1.html(html_code, height=280)
 
-    manual_barcode = st.text_input("Or enter barcode manually:")
+    # خانة إدخال باركود يدوية (اختيارية)
+    manual_barcode = st.text_input("Or enter barcode manually")
 
-    final_barcode = None
-    if manual_barcode and manual_barcode.strip():
-        final_barcode = manual_barcode.strip()
-    elif barcode:
-        final_barcode = barcode.strip()
-
-    if final_barcode:
-        if final_barcode in df["Barcodes"].astype(str).values:
-            df.loc[df["Barcodes"].astype(str) == final_barcode, "Actual Quantity"] += 1
+    def add_barcode(bc):
+        if bc in df["Barcodes"].astype(str).values:
+            df.loc[df["Barcodes"].astype(str) == bc, "Actual Quantity"] += 1
             df["Difference"] = df["Actual Quantity"] - df["Available Quantity"]
             st.session_state.df = df
-            scanned_barcode.success(f"Barcode {final_barcode} counted!")
+            st.success(f"✅ Barcode {bc} counted.")
         else:
-            scanned_barcode.warning(f"Barcode {final_barcode} not found in inventory.")
+            st.warning(f"❌ Barcode '{bc}' not found.")
 
+    # تحديث بالباركود من الكاميرا
+    if barcode:
+        add_barcode(barcode)
+        # تفريغ قيمة الباركود من ال query params بعد المعالجة
+        st.experimental_set_query_params(barcode="")
+
+    # تحديث بالباركود من الإدخال اليدوي
+    if manual_barcode:
+        add_barcode(manual_barcode.strip())
+        st.experimental_rerun()
+
+    # عرض الجدول محدث أولاً
     st.dataframe(df, use_container_width=True)
 
+    # زر التحميل
     buffer = io.BytesIO()
     df.to_excel(buffer, index=False)
     st.download_button(
-        label="📥 Download updated inventory",
+        label="📥 Download Updated Inventory",
         data=buffer.getvalue(),
         file_name="updated_inventory.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
-
-else:
-    st.info("Please upload an inventory file to start scanning.")
