@@ -39,14 +39,12 @@ if st.session_state.df is not None:
 
     # سكان باركود
     st.markdown("### 📸 Scan Barcode")
-    cols = st.columns([2, 2])  # خليتين: الباركود واسم المنتج
+    scanned = st.text_input("Scan Barcode", value=st.session_state.barcode_input)
+    
     product_name_display = ""
 
-    with cols[0]:
-        st.session_state.barcode_input = st.text_input("Scan Barcode", value=st.session_state.barcode_input)
-
-    if st.session_state.barcode_input:
-        scanned = st.session_state.barcode_input.strip()
+    if scanned:
+        scanned = scanned.strip()
 
         # زيادة العدد في قاموس الباركودات
         if scanned in st.session_state.barcode_counts:
@@ -67,14 +65,17 @@ if st.session_state.df is not None:
 
         # Reset input
         st.session_state.barcode_input = ""
+    else:
+        st.session_state.barcode_input = scanned
 
-    with cols[1]:
-        st.markdown(f"""
-            <div style="padding: 0.75rem 1rem; background-color: #e6f4ea; border: 2px solid #2e7d32;
-                        border-radius: 5px; font-weight: bold; font-size: 16px;">
-                {product_name_display}
-            </div>
-        """, unsafe_allow_html=True)
+    # عرض اسم المنتج تحت سكان الباركود
+    st.markdown("#### 🏷️ Product Name")
+    st.markdown(f"""
+        <div style="padding: 0.75rem 1rem; background-color: #e6f4ea; border: 2px solid #2e7d32;
+                    border-radius: 5px; font-weight: bold; font-size: 16px;">
+            {product_name_display}
+        </div>
+    """, unsafe_allow_html=True)
 
     # تحديث الفرق
     df["Difference"] = df["Actual Quantity"] - df["Available Quantity"]
