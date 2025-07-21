@@ -4,10 +4,9 @@ import pandas as pd
 st.set_page_config(page_title="📦 Inventory Scanner", layout="wide")
 st.title("📦 Domanza Inventory App with Camera")
 
-# Session state to track scanned barcodes
+# Session state init
 if 'scanned_barcodes' not in st.session_state:
     st.session_state.scanned_barcodes = []
-
 if 'barcode_input' not in st.session_state:
     st.session_state.barcode_input = ""
 
@@ -37,19 +36,19 @@ if uploaded_file:
     product_name_display = ""
 
     with cols[0]:
-        barcode = st.text_input("Scan Barcode", value="", label_visibility="visible", key="barcode_input")
+        st.text_input("Scan Barcode", key="barcode_input")
 
-    if barcode:
-        barcode = barcode.strip()
-        st.session_state.scanned_barcodes.append(barcode)
+    if st.session_state.barcode_input:
+        scanned = st.session_state.barcode_input.strip()
+        st.session_state.scanned_barcodes.append(scanned)
 
-        if barcode in df["Barcodes"].values:
-            df.loc[df["Barcodes"] == barcode, "Actual Quantity"] += 1
-            product_name_display = df.loc[df["Barcodes"] == barcode, "Product Name"].values[0]
+        if scanned in df["Barcodes"].values:
+            df.loc[df["Barcodes"] == scanned, "Actual Quantity"] += 1
+            product_name_display = df.loc[df["Barcodes"] == scanned, "Product Name"].values[0]
         else:
             product_name_display = "❌ Not Found"
 
-        # فضي خانة الإدخال تلقائيًا
+        # Reset input safely
         st.session_state.barcode_input = ""
 
     with cols[1]:
