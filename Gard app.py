@@ -5,7 +5,6 @@ import io
 st.set_page_config(page_title="📦 Inventory Scanner", layout="wide")
 st.title("📦 Inventory Scanner App")
 
-# رفع ملف الجرد
 uploaded_file = st.file_uploader("Upload your inventory file", type=["csv", "xlsx"])
 
 if uploaded_file and "df" not in st.session_state:
@@ -33,7 +32,6 @@ if "df" in st.session_state:
 
     st.subheader("📸 Scan Barcode (Camera & Input)")
 
-    # مربع كاميرا بحجم أصغر
     html_code = """
     <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
     <div id="reader" style="width: 250px; margin: auto;"></div>
@@ -56,13 +54,11 @@ if "df" in st.session_state:
     </script>
     """
 
-    # استيراد المكون المخصص
-    barcode = st.experimental_get_query_params().get("barcode", [""])[0]
+    # استخدام st.query_params بدل st.experimental_get_query_params
+    barcode = st.query_params.get("barcode", [""])[0]
 
-    # استماع لحدث سكان الباركود
     st.components.v1.html(html_code, height=280)
 
-    # خانة إدخال باركود يدوية (اختيارية)
     manual_barcode = st.text_input("Or enter barcode manually")
 
     def add_barcode(bc):
@@ -74,21 +70,16 @@ if "df" in st.session_state:
         else:
             st.warning(f"❌ Barcode '{bc}' not found.")
 
-    # تحديث بالباركود من الكاميرا
     if barcode:
         add_barcode(barcode)
-        # تفريغ قيمة الباركود من ال query params بعد المعالجة
         st.experimental_set_query_params(barcode="")
 
-    # تحديث بالباركود من الإدخال اليدوي
     if manual_barcode:
         add_barcode(manual_barcode.strip())
         st.experimental_rerun()
 
-    # عرض الجدول محدث أولاً
     st.dataframe(df, use_container_width=True)
 
-    # زر التحميل
     buffer = io.BytesIO()
     df.to_excel(buffer, index=False)
     st.download_button(
