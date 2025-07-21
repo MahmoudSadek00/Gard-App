@@ -7,6 +7,8 @@ st.title("📦 Domanza Inventory App with Camera")
 # إعدادات الجلسة
 if 'scanned_barcodes' not in st.session_state:
     st.session_state.scanned_barcodes = []
+if 'product_name_display' not in st.session_state:
+    st.session_state.product_name_display = ""
 
 # رفع الملف
 uploaded_file = st.file_uploader("Upload Inventory Excel File", type=["xlsx"])
@@ -31,28 +33,23 @@ if uploaded_file:
     st.markdown("### 📸 Scan Barcode")
     barcode_input = st.text_input("Scan Here", key="barcode_input")
 
-    product_name_display = ""
-
-    # عند الضغط على Enter في خانة الباركود
     if barcode_input:
         barcode = barcode_input.strip()
-
-        # لو لسه ما اتحسبش في الجلسة
         st.session_state.scanned_barcodes.append(barcode)
 
         # تحديث الكمية
         mask = df["Barcodes"] == barcode
         if mask.any():
             df.loc[mask, "Actual Quantity"] += 1
-            product_name_display = df.loc[mask, "Product Name"].values[0]
+            st.session_state.product_name_display = df.loc[mask, "Product Name"].values[0]
         else:
-            product_name_display = "❌ Not Found"
+            st.session_state.product_name_display = "❌ Not Found"
 
-        # تفريغ خلية الإدخال بعد المسح
-        st.session_state.barcode_input = ""
+        # تفريغ الخانة بإعادة تشغيل الصفحة
+        st.experimental_rerun()
 
     # خانة اسم المنتج (بارزة ومقفولة)
-    st.text_input("Product Name", value=product_name_display, disabled=True, label_visibility="visible")
+    st.text_input("Product Name", value=st.session_state.product_name_display, disabled=True, label_visibility="visible")
 
     # الفروق
     df["Difference"] = df["Actual Quantity"] - df["Available Quantity"]
