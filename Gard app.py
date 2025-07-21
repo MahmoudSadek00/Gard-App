@@ -1,65 +1,60 @@
 import streamlit as st
 import pandas as pd
+import io
 
 st.set_page_config(page_title="📦 Inventory Scanner", layout="wide")
-st.title("📦 Domanza Inventory App with Camera")
+st.title("📦 Inventory Scanner App")
 
-# Session state
-if 'scanned_barcodes' not in st.session_state:
-    st.session_state.scanned_barcodes = []
+# Step 1: Upload file
+uploaded_file = st.file_uploader("Upload your inventory file", type=["csv", "xlsx"])
 
-# File uploader
-uploaded_file = st.file_uploader("Upload Inventory Excel File", type=["xlsx"])
+if uploaded_file and "df" not in st.session_state:
+    try:
+        if uploaded_file.name.endswith(".csv"):
+            df = pd.read_csv(uploaded_file)
+        else:
+            df = pd.read_excel(uploaded_file)
 
-if uploaded_file:
-    all_sheets = pd.read_excel(uploaded_file, sheet_name=None)
-    sheet_names = list(all_sheets.keys())
-    selected_sheet = st.selectbox("Select Brand Sheet", sheet_names)
-    df = all_sheets[selected_sheet]
-    df.columns = df.columns.str.strip()
+        if "Barcodes" not in df.columns or "Available Quantity" not in df.columns:
+            st.error("⚠️ File must include 'Barcodes' and 'Available Quantity'")
+            st.stop()
 
-    if "Barcodes" not in df.columns or "Available Quantity" not in df.columns or "Actual Quantity" not in df.columns:
-        st.error("❌ Sheet must contain 'Barcodes', 'Available Quantity', and 'Actual Quantity' columns.")
-        st.write("Available columns:", df.columns.tolist())
+        df["Actual Quantity"] = 0
+        df["Difference"] = df["Actual Quantity"] - df["Available Quantity"]
+        st.session_state.df = df
+        st.success("✅ File loaded successfully!")
+
+    except Exception as e:
+        st.error(f"Error reading file: {e}")
         st.stop()
 
-    # تنظيف الباركود
-    df["Barcodes"] = df["Barcodes"].astype(str).str.strip()
-    df["Actual Quantity"] = df["Actual Quantity"].fillna(0).astype(int)
+def process_barcode():
+    barcode = st.session_state.barcode_input.strip()
+    if len(barcode) == 9:
+        df = st.session_state.df
+        if barcode in df["Barcodes"].astype(str).values:
+            df.loc[df["Barcodes"].astype(str) == barcode, "Actual Quantity"] += 1
+            df["Difference"] = df["Actual Quantity"] - df["Available Quantity"]
+            st.session_state.df = df
+            st.success(f"✅ Barcode {barcode} counted.")
+        else:
+            st.warning(f"❌ Barcode '{barcode}' not found.")
+    # Clear input to allow next scan immediately
+    st.session_state.barcode_input = ""
 
-    # سكان باركود
-    st.markdown("### 📸 Scan Barcode")
-    barcode_input = st.text_input("Scan Here", value="", label_visibility="collapsed")
+if "df" in st.session_state:
+    st.subheader("📸 Scan Barcode")
+    barcode_input = st.text_input("Scan or enter barcode", key="barcode_input", on_change=process_barcode)
 
-    if barcode_input:
-        barcode_input = barcode_input.strip()
-        st.session_state.scanned_barcodes.append(barcode_input)
-        st.text_input("Last Scanned", value=barcode_input, disabled=True)
+    # Show dataframe below input
+    st.dataframe(st.session_state.df, use_container_width=True)
 
-    # تجهيز السكان
-    scanned_df = pd.DataFrame(st.session_state.scanned_barcodes, columns=["Barcodes"])
-    scanned_df["Barcodes"] = scanned_df["Barcodes"].astype(str).str.strip()
-    scanned_df["Actual Quantity"] = 1
-    scanned_df = scanned_df.groupby("Barcodes").sum().reset_index()
-
-    # تحديث الشيت الأصلي مباشرة
-    for _, row in scanned_df.iterrows():
-        barcode = row["Barcodes"]
-        count = row["Actual Quantity"]
-        df.loc[df["Barcodes"] == barcode, "Actual Quantity"] = count
-
-    # تحديث الفرق تلقائي
-    if "Difference" in df.columns:
-        df["Difference"] = df["Actual Quantity"] - df["Available Quantity"]
-
-    # عرض الشيت
-    st.subheader("📋 Updated Sheet")
-    st.dataframe(df)
-
-    # تحميل
-    @st.cache_data
-    def convert_df_to_csv(df):
-        return df.to_csv(index=False).encode("utf-8")
-
-    csv = convert_df_to_csv(df)
-    st.download_button("📥 Download Updated Sheet", data=csv, file_name="updated_inventory.csv", mime="text/csv")
+    # Download button
+    buffer = io.BytesIO()
+    st.session_state.df.to_excel(buffer, index=False)
+    st.download_button(
+        label="📥 Download Updated File",
+        data=buffer.getvalue(),
+        file_name="updated_inventory.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
