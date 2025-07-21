@@ -4,7 +4,7 @@ import pandas as pd
 st.set_page_config(page_title="📦 Inventory Scanner", layout="wide")
 st.title("📦 Domanza Inventory App with Camera")
 
-# Session state init
+# Initialize session state
 if 'barcode_counts' not in st.session_state:
     st.session_state.barcode_counts = {}
 if 'barcode_input' not in st.session_state:
@@ -14,9 +14,10 @@ if 'df' not in st.session_state:
 if 'sheet_uploaded' not in st.session_state:
     st.session_state.sheet_uploaded = False
 
-# Step 1: Upload
+# Upload section
 if not st.session_state.sheet_uploaded:
-    uploaded_file = st.file_uploader("⬆️ Upload Inventory Excel File", type=["xlsx"])
+    uploaded_file = st.file_uploader("Upload Inventory Excel File", type=["xlsx"])
+
     if uploaded_file:
         all_sheets = pd.read_excel(uploaded_file, sheet_name=None)
         sheet_names = list(all_sheets.keys())
@@ -34,16 +35,14 @@ if not st.session_state.sheet_uploaded:
         df["Actual Quantity"] = df["Actual Quantity"].fillna(0).astype(int)
 
         st.session_state.df = df.copy()
-        st.session_state.sheet_uploaded = True
-        st.experimental_rerun()  # إعادة تحميل الصفحة مباشرة بعد الرفع
+        st.session_state.sheet_uploaded = True  # Flag that sheet was uploaded
 
-# Step 2: Scanning Interface
+# Main scanning interface
 if st.session_state.sheet_uploaded and st.session_state.df is not None:
     df = st.session_state.df
 
     st.markdown("### 📸 Scan Barcode")
     scanned = st.text_input("Scan Barcode", value=st.session_state.barcode_input)
-    
     product_name_display = ""
 
     if scanned:
@@ -62,11 +61,10 @@ if st.session_state.sheet_uploaded and st.session_state.df is not None:
 
         st.session_state.df = df
         st.session_state.barcode_input = ""
-        st.experimental_rerun()
     else:
         st.session_state.barcode_input = scanned
 
-    # Show product name
+    # Display product name
     st.markdown("#### 🏷️ Product Name")
     st.markdown(f"""
         <div style="padding: 0.75rem 1rem; background-color: #e6f4ea; border: 2px solid #2e7d32;
@@ -75,22 +73,22 @@ if st.session_state.sheet_uploaded and st.session_state.df is not None:
         </div>
     """, unsafe_allow_html=True)
 
-    # Add difference column
+    # Show updated table
     df["Difference"] = df["Actual Quantity"] - df["Available Quantity"]
-
     st.subheader("📋 Updated Sheet")
     st.dataframe(df)
 
+    # Barcode log
     st.markdown("### ✅ Scanned Barcode Log")
     st.write(pd.DataFrame([
         {"Barcode": k, "Scanned Count": v}
         for k, v in st.session_state.barcode_counts.items()
     ]))
 
+    # Download CSV
     @st.cache_data
     def convert_df_to_csv(df):
         return df.to_csv(index=False).encode("utf-8")
 
     csv = convert_df_to_csv(df)
     st.download_button("📥 Download Updated Sheet", data=csv, file_name="updated_inventory.csv", mime="text/csv")
-
