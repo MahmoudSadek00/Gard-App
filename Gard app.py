@@ -4,51 +4,58 @@ import pandas as pd
 st.set_page_config(page_title="📦 Inventory Scanner", layout="wide")
 st.title("📦 Domanza Inventory App with Camera")
 
-# Session state initialization
+# Session state init
 if 'barcode_counts' not in st.session_state:
     st.session_state.barcode_counts = {}
 if 'barcode_input' not in st.session_state:
     st.session_state.barcode_input = ""
 if 'df' not in st.session_state:
     st.session_state.df = None
+if 'selected_sheet' not in st.session_state:
+    st.session_state.selected_sheet = None
 
-# Upload file
+# File upload
 uploaded_file = st.file_uploader("Upload Inventory Excel File", type=["xlsx"])
-if uploaded_file and st.session_state.df is None:
+
+if uploaded_file:
     all_sheets = pd.read_excel(uploaded_file, sheet_name=None)
     sheet_names = list(all_sheets.keys())
-    selected_sheet = st.selectbox("Select Brand Sheet", sheet_names)
-    df = all_sheets[selected_sheet]
-    df.columns = df.columns.str.strip()
 
-    required_columns = ["Barcodes", "Available Quantity", "Actual Quantity", "Product Name"]
-    if not all(col in df.columns for col in required_columns):
-        st.error(f"❌ Sheet must contain these columns: {required_columns}")
-        st.write("Available columns:", df.columns.tolist())
-        st.stop()
+    st.session_state.selected_sheet = st.selectbox("Select Brand Sheet", sheet_names)
 
-    df["Barcodes"] = df["Barcodes"].astype(str).str.strip()
-    df["Actual Quantity"] = df["Actual Quantity"].fillna(0).astype(int)
+    if st.button("✅ Confirm Sheet"):
+        df = all_sheets[st.session_state.selected_sheet]
+        df.columns = df.columns.str.strip()
 
-    st.session_state.df = df.copy()
+        required_cols = ["Barcodes", "Available Quantity", "Actual Quantity", "Product Name"]
+        if not all(col in df.columns for col in required_cols):
+            st.error(f"❌ Missing required columns: {required_cols}")
+            st.write("Available columns:", df.columns.tolist())
+            st.stop()
 
+        df["Barcodes"] = df["Barcodes"].astype(str).str.strip()
+        df["Actual Quantity"] = df["Actual Quantity"].fillna(0).astype(int)
+
+        st.session_state.df = df.copy()
+        st.success("✅ Sheet Loaded Successfully!")
+
+# After confirm
 if st.session_state.df is not None:
     df = st.session_state.df
-    st.markdown("### 📸 Scan Barcode")
 
+    st.markdown("### 📸 Scan Barcode")
     col1, col2 = st.columns([4, 1])
 
     with col1:
-        scanned = st.text_input("Scan Barcode", value=st.session_state.barcode_input, key="barcode_input")
+        st.text_input("Scan Barcode", key="barcode_input")
     with col2:
         if st.button("🧹 Clear Input"):
-            st.session_state.barcode_input = ""
+            st.session_state["barcode_input"] = ""
 
+    scanned = st.session_state["barcode_input"].strip()
     product_name_display = ""
 
     if scanned:
-        scanned = scanned.strip()
-
         if scanned in st.session_state.barcode_counts:
             st.session_state.barcode_counts[scanned] += 1
         else:
