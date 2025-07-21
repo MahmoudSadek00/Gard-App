@@ -5,9 +5,10 @@ import io
 st.set_page_config(page_title="📦 Inventory Scanner", layout="wide")
 st.title("📦 Inventory Scanner App")
 
-# Step 1: Upload file
+# رفع الملف
 uploaded_file = st.file_uploader("Upload your inventory file", type=["csv", "xlsx"])
 
+# تحميل البيانات لأول مرة
 if uploaded_file and "df" not in st.session_state:
     try:
         if uploaded_file.name.endswith(".csv"):
@@ -21,9 +22,9 @@ if uploaded_file and "df" not in st.session_state:
 
         df["Actual Quantity"] = 0
         df["Difference"] = df["Actual Quantity"] - df["Available Quantity"]
-
         st.session_state.df = df
-        st.session_state.last_scanned = ""  # نستخدمه لمتابعة آخر باركود
+        st.session_state.last_barcode = ""
+        st.session_state.input_text = ""
 
         st.success("✅ File loaded successfully!")
 
@@ -31,34 +32,42 @@ if uploaded_file and "df" not in st.session_state:
         st.error(f"Error reading file: {e}")
         st.stop()
 
-# Step 2: Handle scanning
-if "df" in st.session_state:
+# التعامل مع السكان السريع
+def process_barcode():
+    barcode = st.session_state.input_text.strip()
     df = st.session_state.df
-    st.subheader("📸 Scan Barcode")
 
-    barcode = st.text_input("Scan or enter barcode manually", value="", key="scan_input")
-
-    # لو الباركود اتغير عن آخر واحد اتسجل
-    if barcode and barcode != st.session_state.get("last_scanned", ""):
-        barcode = barcode.strip()
+    if barcode:
         if barcode in df["Barcodes"].astype(str).values:
             df.loc[df["Barcodes"].astype(str) == barcode, "Actual Quantity"] += 1
             df["Difference"] = df["Actual Quantity"] - df["Available Quantity"]
+            st.session_state.df = df
             st.success(f"✅ Barcode {barcode} counted.")
         else:
             st.warning(f"❌ Barcode '{barcode}' not found.")
 
-        st.session_state.df = df
-        st.session_state.last_scanned = barcode  # نحفظ آخر باركود
+    # Reset الإدخال بعد كل سكان
+    st.session_state.input_text = ""
 
-        st.experimental_rerun()
+# لو تم تحميل الملف
+if "df" in st.session_state:
+    st.subheader("📸 Scan Barcode")
+
+    # هنا الإدخال بيترصد لوحده أي تغيير ويحرك الفانكشن
+    st.text_input(
+        "Scan barcode here",
+        key="input_text",
+        on_change=process_barcode,
+        label_visibility="collapsed",
+        placeholder="Waiting for barcode..."
+    )
 
     # عرض الجدول
-    st.dataframe(df, use_container_width=True)
+    st.dataframe(st.session_state.df, use_container_width=True)
 
-    # زر التحميل
+    # تحميل الملف
     buffer = io.BytesIO()
-    df.to_excel(buffer, index=False)
+    st.session_state.df.to_excel(buffer, index=False)
 
     st.download_button(
         label="📥 Download Updated File",
