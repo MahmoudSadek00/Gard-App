@@ -2,95 +2,73 @@ import streamlit as st
 import pandas as pd
 
 st.set_page_config(page_title="📦 Inventory Scanner", layout="wide")
-st.title("📦 Domanza Inventory App with Camera")
 
-# Initial session state setup
-if 'uploaded_file' not in st.session_state:
+# حفظ البيانات في session state
+if "uploaded_file" not in st.session_state:
     st.session_state.uploaded_file = None
-if 'sheet_names' not in st.session_state:
-    st.session_state.sheet_names = []
-if 'selected_sheet' not in st.session_state:
-    st.session_state.selected_sheet = None
-if 'df' not in st.session_state:
+if "sheet_name" not in st.session_state:
+    st.session_state.sheet_name = None
+if "df" not in st.session_state:
     st.session_state.df = None
-if 'barcode_input' not in st.session_state:
+if "barcode_input" not in st.session_state:
     st.session_state.barcode_input = ""
-if 'product_name_display' not in st.session_state:
-    st.session_state.product_name_display = ""
 
-# Uploading the file (only if not already uploaded)
+# رفع الملف
 if st.session_state.uploaded_file is None:
-    uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"], key="file_uploader")
-    if uploaded_file:
+    uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"])
+    if uploaded_file is not None:
         st.session_state.uploaded_file = uploaded_file
-        all_sheets = pd.read_excel(uploaded_file, sheet_name=None)
-        st.session_state.sheet_names = list(all_sheets.keys())
-        st.session_state.all_sheets_data = all_sheets
+        st.experimental_rerun()  # إعادة تحميل الصفحة بعد الرفع
 
-# Selecting sheet
-if st.session_state.uploaded_file and st.session_state.sheet_names:
-    selected = st.selectbox("Select Sheet", st.session_state.sheet_names)
-    if selected != st.session_state.selected_sheet:
-        st.session_state.selected_sheet = selected
-        df = st.session_state.all_sheets_data[selected]
-        df.columns = df.columns.str.strip()
+# لو الملف مرفوع
+if st.session_state.uploaded_file is not None:
 
-        # Check required columns
-        required_cols = ["Barcodes", "Available Quantity", "Product Name"]
-        for col in required_cols:
-            if col not in df.columns:
-                st.error(f"❌ Missing required column: {col}")
-                st.stop()
+    # قراءة أسماء الشيتات
+    xl = pd.ExcelFile(st.session_state.uploaded_file)
+    sheet_names = xl.sheet_names
 
-        # Prepare DataFrame
-        df["Barcodes"] = df["Barcodes"].astype(str).str.strip()
-        df["Actual Quantity"] = 0  # Initialize if not present
-        st.session_state.df = df.copy()
+    # اختيار الشيت
+    if st.session_state.sheet_name is None:
+        st.session_state.sheet_name = sheet_names[0]
 
-# Barcode Scanning Interface
-if st.session_state.df is not None:
-    df = st.session_state.df
+    sheet_name = st.selectbox("Select Sheet", sheet_names, index=sheet_names.index(st.session_state.sheet_name))
+    st.session_state.sheet_name = sheet_name
 
-    st.markdown("### 📸 Scan a Barcode")
-    barcode = st.text_input("Scan Barcode", key="barcode_input", value="", label_visibility="collapsed")
+    # قراءة البيانات من الشيت المحدد
+    df = xl.parse(sheet_name)
+    required_columns = ['Barcodes', 'Available Quantity', 'Product Name']
 
-    # Always show last product scanned
-    st.markdown("#### 🏷️ Product Name")
-    st.markdown(f"""
-        <div style="padding: 10px; background-color: #e6f4ea; border: 2px solid #2e7d32;
-                    border-radius: 5px; font-weight: bold; font-size: 16px;">
-            {st.session_state.product_name_display}
-        </div>
-    """, unsafe_allow_html=True)
-
-    if barcode:
-        barcode = barcode.strip()
-        if barcode in df["Barcodes"].values:
-            current_qty = df.loc[df["Barcodes"] == barcode, "Actual Quantity"].values[0]
-            df.loc[df["Barcodes"] == barcode, "Actual Quantity"] = current_qty + 1
-            product_name = df.loc[df["Barcodes"] == barcode, "Product Name"].values[0]
-            st.session_state.product_name_display = product_name
-        else:
-            st.session_state.product_name_display = "❌ Not Found"
+    if not all(col in df.columns for col in required_columns):
+        st.error("Sheet must contain 'Barcodes', 'Available Quantity', and 'Product Name' columns.")
+    else:
+        # إنشاء عمود للكمية الفعلية
+        if 'Actual Quantity' not in df.columns:
+            df['Actual Quantity'] = 0
 
         st.session_state.df = df
-        st.session_state.barcode_input = ""  # Move this BEFORE rerun
-        st.experimental_rerun()  # Rerun the app
 
-    # Show updated table
-    df["Difference"] = df["Actual Quantity"] - df["Available Quantity"]
-    st.markdown("### 📋 Updated Table")
-    st.dataframe(df)
+        # إدخال الباركود
+        barcode = st.text_input("Scan Barcode", key="barcode_input")
 
-    # Scanned Log
-    st.markdown("### ✅ Scanned Barcodes")
-    scanned_df = df[df["Actual Quantity"] > 0][["Barcodes", "Actual Quantity"]]
-    st.dataframe(scanned_df)
+        if barcode:
+            df = st.session_state.df
+            matched = df['Barcodes'] == barcode
 
-    # Download option
-    @st.cache_data
-    def convert_df(df):
-        return df.to_csv(index=False).encode("utf-8")
+            if matched.any():
+                df.loc[matched, 'Actual Quantity'] += 1
+                st.session_state.df = df
+            else:
+                st.warning("Barcode not found in the list.")
 
-    csv = convert_df(df)
-    st.download_button("📥 Download Updated Sheet", csv, "updated_inventory.csv", "text/csv")
+            # تهيئة خانة الإدخال
+            st.session_state.barcode_input = ""
+            st.experimental_rerun()
+
+        # عرض الجدول
+        st.dataframe(st.session_state.df)
+
+        # تحميل ملف الإكسل المحدث
+        with pd.ExcelWriter("updated_inventory.xlsx", engine="xlsxwriter") as writer:
+            st.session_state.df.to_excel(writer, sheet_name="Updated", index=False)
+        with open("updated_inventory.xlsx", "rb") as f:
+            st.download_button("📥 Download Updated Excel", f, file_name="updated_inventory.xlsx")
