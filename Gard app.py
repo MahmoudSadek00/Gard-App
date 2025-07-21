@@ -4,7 +4,7 @@ import pandas as pd
 st.set_page_config(page_title="📦 Inventory Scanner", layout="wide")
 st.title("📦 Domanza Inventory App with Camera")
 
-# Session state to track scanned barcodes and counts
+# Session state init
 if 'barcode_counts' not in st.session_state:
     st.session_state.barcode_counts = {}
 if 'barcode_input' not in st.session_state:
@@ -28,53 +28,49 @@ if uploaded_file and st.session_state.df is None:
         st.write("Available columns:", df.columns.tolist())
         st.stop()
 
-    # تنظيف الأعمدة
     df["Barcodes"] = df["Barcodes"].astype(str).str.strip()
     df["Actual Quantity"] = df["Actual Quantity"].fillna(0).astype(int)
-
     st.session_state.df = df.copy()
 
 if st.session_state.df is not None:
-    df = st.session_state.df  # اشتغل على النسخة الموجودة في السيشن
+    df = st.session_state.df
 
-    # سكان باركود + زر Clear
     st.markdown("### 📸 Scan Barcode")
-    scan_col, clear_col = st.columns([4, 1])
+    col1, col2 = st.columns([4, 1])
 
-    with scan_col:
+    # إدخال الباركود
+    with col1:
         scanned = st.text_input("Scan Barcode", value=st.session_state.barcode_input, key="barcode_input")
 
-    with clear_col:
-        if st.button("🧹 Clear"):
+    # أزرار
+    with col2:
+        if st.button("✅ Confirm"):
+            if scanned:
+                scanned = scanned.strip()
+                if scanned in st.session_state.barcode_counts:
+                    st.session_state.barcode_counts[scanned] += 1
+                else:
+                    st.session_state.barcode_counts[scanned] = 1
+
+                if scanned in df["Barcodes"].values:
+                    count = st.session_state.barcode_counts[scanned]
+                    df.loc[df["Barcodes"] == scanned, "Actual Quantity"] = count
+                    product_name_display = df.loc[df["Barcodes"] == scanned, "Product Name"].values[0]
+                else:
+                    product_name_display = "❌ Not Found"
+
+                st.session_state.df = df
+
+        if st.button("❌ Clear"):
             st.session_state.barcode_input = ""
-            scanned = ""
 
+    # اسم المنتج
     product_name_display = ""
+    if scanned and scanned in df["Barcodes"].values:
+        product_name_display = df.loc[df["Barcodes"] == scanned, "Product Name"].values[0]
+    elif scanned:
+        product_name_display = "❌ Not Found"
 
-    if scanned:
-        scanned = scanned.strip()
-
-        # زيادة العدد في قاموس الباركودات
-        if scanned in st.session_state.barcode_counts:
-            st.session_state.barcode_counts[scanned] += 1
-        else:
-            st.session_state.barcode_counts[scanned] = 1
-
-        # تحديث Actual Quantity في الجدول
-        if scanned in df["Barcodes"].values:
-            count = st.session_state.barcode_counts[scanned]
-            df.loc[df["Barcodes"] == scanned, "Actual Quantity"] = count
-            product_name_display = df.loc[df["Barcodes"] == scanned, "Product Name"].values[0]
-        else:
-            product_name_display = "❌ Not Found"
-
-        # حفظ التحديث
-        st.session_state.df = df
-
-        # Reset input
-        st.session_state.barcode_input = ""
-
-    # عرض اسم المنتج تحت سكان الباركود
     st.markdown("#### 🏷️ Product Name")
     st.markdown(f"""
         <div style="padding: 0.75rem 1rem; background-color: #e6f4ea; border: 2px solid #2e7d32;
@@ -83,21 +79,17 @@ if st.session_state.df is not None:
         </div>
     """, unsafe_allow_html=True)
 
-    # تحديث الفرق
     df["Difference"] = df["Actual Quantity"] - df["Available Quantity"]
 
-    # عرض الجدول النهائي
     st.subheader("📋 Updated Sheet")
     st.dataframe(df)
 
-    # عرض الباركودات المتسكانة وعددها
     st.markdown("### ✅ Scanned Barcode Log")
     st.write(pd.DataFrame([
         {"Barcode": k, "Scanned Count": v}
         for k, v in st.session_state.barcode_counts.items()
     ]))
 
-    # زر التحميل
     @st.cache_data
     def convert_df_to_csv(df):
         return df.to_csv(index=False).encode("utf-8")
