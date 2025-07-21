@@ -1,74 +1,68 @@
 import streamlit as st
 import pandas as pd
-import streamlit.components.v1 as components
+from streamlit.components.v1 import html
 
-st.set_page_config(page_title="Inventory Camera App", layout="wide")
-st.title("📦 Inventory Scanner with Camera")
+st.set_page_config(page_title="📦 Inventory Scanner", layout="wide")
+st.title("📷 Barcode Scanner - Inventory App")
 
-# Step 1: Upload products file
-products_file = st.file_uploader("Upload Products File (CSV or Excel with 'Barcodes' & 'Available Quantity')", type=['csv', 'xlsx'])
-
-if products_file:
-    if products_file.name.endswith('.csv'):
-        df = pd.read_csv(products_file)
-    else:
-        df = pd.read_excel(products_file)
-
-    # Ensure required columns exist
-    if 'Barcodes' not in df.columns or 'Available Quantity' not in df.columns:
+# Upload initial inventory file
+uploaded_file = st.file_uploader("Upload Inventory File (Excel)", type=["xlsx"])
+if uploaded_file:
+    df = pd.read_excel(uploaded_file)
+    if "Barcodes" not in df.columns or "Available Quantity" not in df.columns:
         st.error("File must contain 'Barcodes' and 'Available Quantity' columns.")
-    else:
-        df['Actual Quantity'] = 0
+        st.stop()
 
-        st.markdown("## Scan Barcodes")
+    if "Actual Quantity" not in df.columns:
+        df["Actual Quantity"] = 0
+    if "Difference" not in df.columns:
+        df["Difference"] = df["Actual Quantity"] - df["Available Quantity"]
 
-        # HTML + JS barcode scanner using html5-qrcode
-        components.html("""
-            <div>
-                <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
-                <div id="reader" width="600px"></div>
-                <script>
-                    function onScanSuccess(decodedText, decodedResult) {
-                        const input = window.parent.document.querySelector('input[data-testid="stTextInput"]');
+    st.subheader("📦 Inventory Table")
+    table_placeholder = st.empty()
+
+    # JavaScript barcode scanner
+    st.markdown("### Scan a barcode")
+    html(
+        """
+        <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+        <div id="reader" style="width:300px"></div>
+        <script>
+            const qrcode = new Html5Qrcode("reader");
+            const config = { fps: 10, qrbox: 250 };
+            qrcode.start(
+                { facingMode: "environment" },
+                config,
+                (decodedText, decodedResult) => {
+                    const input = window.parent.document.querySelector('input[data-testid="stTextInput"]');
+                    if (input) {
                         input.value = decodedText;
-                        const event = new Event('input', { bubbles: true });
-                        input.dispatchEvent(event);
+                        input.dispatchEvent(new Event('input', { bubbles: true }));
                     }
-                    const html5QrCode = new Html5Qrcode("reader");
-                    html5QrCode.start(
-                        { facingMode: "environment" },
-                        { fps: 10, qrbox: 250 },
-                        onScanSuccess);
-                </script>
-            </div>
-        """, height=300)
+                },
+                errorMessage => {}
+            ).catch(err => {});
+        </script>
+        """,
+        height=400,
+    )
 
-        # Hidden input to receive scanned barcode
-        scanned_barcode = st.text_input("Scanned Barcode (auto-filled)")
+    barcode = st.text_input("Scanned Barcode")
 
-        if scanned_barcode:
-            if scanned_barcode in df['Barcodes'].values:
-                df.loc[df['Barcodes'] == scanned_barcode, 'Actual Quantity'] += 1
-                st.success(f"✅ Counted 1 more for barcode: {scanned_barcode}")
-            else:
-                st.warning(f"❌ Barcode not found: {scanned_barcode}")
+    if barcode:
+        # تحديث الكمية الفعلية
+        if barcode in df["Barcodes"].values:
+            df.loc[df["Barcodes"] == barcode, "Actual Quantity"] += 1
+            df["Difference"] = df["Actual Quantity"] - df["Available Quantity"]
+        else:
+            st.warning(f"Barcode {barcode} not found in file.")
 
-        # Compute difference
-        df['Difference'] = df['Actual Quantity'] - df['Available Quantity']
+        table_placeholder.dataframe(df)
 
-        st.markdown("## Final Inventory Table")
-        st.dataframe(df)
+        # زر تحميل النتيجة
+        output_file = "inventory_with_actual.xlsx"
+        df.to_excel(output_file, index=False)
 
-        # Export
-        @st.cache_data
-        def convert_df(df):
-            return df.to_csv(index=False).encode('utf-8')
+        with open(output_file, "rb") as f:
+            st.download_button("📥 Download Updated File", f, file_name="Inventory_Updated.xlsx")
 
-        csv = convert_df(df)
-        st.download_button(
-            "📥 Download Final CSV",
-            csv,
-            "final_inventory.csv",
-            "text/csv",
-            key='download-csv'
-        )
