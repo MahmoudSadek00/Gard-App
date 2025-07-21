@@ -8,6 +8,9 @@ st.title("📦 Domanza Inventory App with Camera")
 if 'scanned_barcodes' not in st.session_state:
     st.session_state.scanned_barcodes = []
 
+if 'barcode_input' not in st.session_state:
+    st.session_state.barcode_input = ""
+
 # File uploader
 uploaded_file = st.file_uploader("Upload Inventory Excel File", type=["xlsx"])
 
@@ -34,18 +37,20 @@ if uploaded_file:
     product_name_display = ""
 
     with cols[0]:
-        barcode_input = st.text_input("Scan Barcode", value="", label_visibility="visible")
+        barcode = st.text_input("Scan Barcode", value="", label_visibility="visible", key="barcode_input")
 
-    if barcode_input:
-        barcode_input = barcode_input.strip()
-        st.session_state.scanned_barcodes.append(barcode_input)  # خزن الباركود داخليًا
+    if barcode:
+        barcode = barcode.strip()
+        st.session_state.scanned_barcodes.append(barcode)
 
-        if barcode_input in df["Barcodes"].values:
-            # زود 1 مباشرة
-            df.loc[df["Barcodes"] == barcode_input, "Actual Quantity"] += 1
-            product_name_display = df.loc[df["Barcodes"] == barcode_input, "Product Name"].values[0]
+        if barcode in df["Barcodes"].values:
+            df.loc[df["Barcodes"] == barcode, "Actual Quantity"] += 1
+            product_name_display = df.loc[df["Barcodes"] == barcode, "Product Name"].values[0]
         else:
             product_name_display = "❌ Not Found"
+
+        # فضي خانة الإدخال تلقائيًا
+        st.session_state.barcode_input = ""
 
     with cols[1]:
         # عرض اسم المنتج بشكل منور
