@@ -4,7 +4,7 @@ import pandas as pd
 st.set_page_config(page_title="📦 Inventory Scanner", layout="wide")
 st.title("📦 Domanza Inventory App with Camera")
 
-# Session state to track scanned barcodes
+# Session state
 if 'scanned_barcodes' not in st.session_state:
     st.session_state.scanned_barcodes = []
 
@@ -18,9 +18,11 @@ if uploaded_file:
     df = all_sheets[selected_sheet]
     df.columns = df.columns.str.strip()
 
+    # التحقق من الأعمدة المطلوبة
     required_columns = ["Barcodes", "Available Quantity", "Actual Quantity", "Product Name"]
-    if not all(col in df.columns for col in required_columns):
-        st.error(f"❌ Sheet must contain these columns: {required_columns}")
+    missing = [col for col in required_columns if col not in df.columns]
+    if missing:
+        st.error(f"❌ Sheet must contain: {', '.join(required_columns)}")
         st.write("Available columns:", df.columns.tolist())
         st.stop()
 
@@ -28,53 +30,37 @@ if uploaded_file:
     df["Barcodes"] = df["Barcodes"].astype(str).str.strip()
     df["Actual Quantity"] = df["Actual Quantity"].fillna(0).astype(int)
 
-    # سكان باركود
+    # 📸 سكان باركود
     st.markdown("### 📸 Scan Barcode")
-    cols = st.columns([2, 2])  # خليتين: الباركود واسم المنتج
+    barcode_input = st.text_input("Scan Here", value="", label_visibility="collapsed")
+
     product_name_display = ""
-
-    with cols[0]:
-        barcode_input = st.text_input("Scan Barcode", value="", label_visibility="visible")
-
     if barcode_input:
         barcode_input = barcode_input.strip()
-        st.session_state.scanned_barcodes.append(barcode_input)  # خزن الباركود داخليًا
+        st.session_state.scanned_barcodes.append(barcode_input)
 
-        # حساب عدد مرات تكراره
-        scanned_df = pd.DataFrame(st.session_state.scanned_barcodes, columns=["Barcodes"])
-        scanned_df["Actual Quantity"] = 1
-        scanned_df = scanned_df.groupby("Barcodes").sum().reset_index()
-
-        # تحديث الكميات
-        for _, row in scanned_df.iterrows():
-            barcode = row["Barcodes"]
-            count = row["Actual Quantity"]
-            df.loc[df["Barcodes"] == barcode, "Actual Quantity"] = count
-
-        # عرض اسم المنتج المنور
-        if barcode_input in df["Barcodes"].values:
-            product_name_display = df.loc[df["Barcodes"] == barcode_input, "Product Name"].values[0]
+        # تحديث الكمية في الشيت الأصلي
+        existing = df["Barcodes"] == barcode_input
+        if existing.any():
+            df.loc[existing, "Actual Quantity"] += 1
+            product_name_display = df.loc[existing, "Product Name"].values[0]
         else:
             product_name_display = "❌ Not Found"
 
-    with cols[1]:
-        # عرض اسم المنتج بشكل منور
-        st.markdown(f"""
-            <div style="padding: 0.75rem 1rem; background-color: #e6f4ea; border: 2px solid #2e7d32;
-                        border-radius: 5px; font-weight: bold; font-size: 16px;">
-                {product_name_display}
-            </div>
-        """, unsafe_allow_html=True)
+    # عرض اسم المنتج تحت الباركود
+    st.text_input("Product Name", value=product_name_display, disabled=True)
 
-    # تحديث الفرق
-    if "Difference" in df.columns:
+    # حساب الفرق
+    if "Difference" not in df.columns:
+        df["Difference"] = df["Actual Quantity"] - df["Available Quantity"]
+    else:
         df["Difference"] = df["Actual Quantity"] - df["Available Quantity"]
 
-    # عرض الجدول النهائي
+    # عرض البيانات
     st.subheader("📋 Updated Sheet")
     st.dataframe(df)
 
-    # زر التحميل
+    # تحويل CSV
     @st.cache_data
     def convert_df_to_csv(df):
         return df.to_csv(index=False).encode("utf-8")
