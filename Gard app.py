@@ -51,29 +51,30 @@ if st.session_state.df is not None:
         st.markdown("### 📸 Camera Barcode Scanner")
         html("""
         <script src="https://unpkg.com/html5-qrcode"></script>
-        <div id="reader" width="600px"></div>
+        <div id="reader" style="width: 300px;"></div>
         <script>
-        function onScanSuccess(decodedText, decodedResult) {
-            const streamlitInput = window.parent.document.querySelector('input[data-testid="stTextInput"]');
-            if (streamlitInput) {
-                streamlitInput.value = decodedText;
-                streamlitInput.dispatchEvent(new Event('input', { bubbles: true }));
+        async function startScanner() {
+          const qrCodeSuccessCallback = (decodedText, decodedResult) => {
+            const inputBox = window.parent.document.querySelector('input[data-testid="stTextInput"]');
+            if (inputBox) {
+              inputBox.value = decodedText;
+              inputBox.dispatchEvent(new Event('input', { bubbles: true }));
             }
+          };
+
+          const config = { fps: 10, qrbox: 250 };
+
+          const html5QrCode = new Html5Qrcode("reader");
+
+          try {
+            await html5QrCode.start({ facingMode: "environment" }, config, qrCodeSuccessCallback);
+          } catch (err) {
+            document.getElementById("reader").innerHTML = "⚠️ Failed to start camera. Please allow camera access.";
+            console.error(err);
+          }
         }
 
-        if (!window.scannerInitialized) {
-            const config = {
-                fps: 10,
-                qrbox: 250,
-                formatsToSupport: [ "code_128", "ean", "ean_13", "upc", "upc_e", "codabar" ]
-            };
-
-            const html5QrcodeScanner = new Html5QrcodeScanner(
-                "reader", config, false);
-
-            html5QrcodeScanner.render(onScanSuccess);
-            window.scannerInitialized = true;
-        }
+        startScanner();
         </script>
         """, height=400)
 
