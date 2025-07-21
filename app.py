@@ -1,29 +1,56 @@
 import streamlit as st
-from streamlit_webrtc import webrtc_streamer
-import av
-import cv2
-from pyzbar import pyzbar
+import pandas as pd
+from io import StringIO
+import datetime
 
-st.set_page_config(page_title="📷 Barcode Inventory Scanner", layout="centered")
-st.title("📦 Inventory Barcode Scanner with Camera")
+st.set_page_config(page_title="📦 Inventory Scanning App", layout="wide")
+st.title("📦 Inventory Scanning App with Barcode Scanner")
 
-st.info("👈 افتح الكاميرا ووجهها ناحية الباركود")
+# Step 1: Upload products sheet
+uploaded_file = st.file_uploader("Upload Product Sheet (CSV or Excel)", type=["csv", "xlsx"])
+if uploaded_file:
+    if uploaded_file.name.endswith(".csv"):
+        df = pd.read_csv(uploaded_file)
+    else:
+        df = pd.read_excel(uploaded_file)
 
-# معالجة كل فريم فيديو
-def video_frame_callback(frame):
-    img = frame.to_ndarray(format="bgr24")
+    # Ensure it has Barcodes and Available Quantity
+    if not {"Barcodes", "Available Quantity"}.issubset(df.columns):
+        st.error("Product sheet must have 'Barcodes' and 'Available Quantity' columns.")
+        st.stop()
 
-    barcodes = pyzbar.decode(img)
-    for barcode in barcodes:
-        barcode_data = barcode.data.decode("utf-8")
-        st.session_state["scanned_barcode"] = barcode_data
-        break  # ناخد أول باركود ونوقف
+    # Initialize session state
+    if "scan_data" not in st.session_state:
+        st.session_state.scan_data = {}
 
-    return av.VideoFrame.from_ndarray(img, format="bgr24")
+    # Step 2: Barcode input manually (camera will be added below)
+    st.subheader("Scan Barcode (type or scan):")
+    barcode = st.text_input("Scan or type barcode:", key="barcode_input")
 
-# تشغيل الكاميرا
-webrtc_streamer(key="example", video_frame_callback=video_frame_callback)
+    if barcode:
+        st.session_state.scan_data[barcode] = st.session_state.scan_data.get(barcode, 0) + 1
+        st.success(f"Scanned: {barcode} | Total: {st.session_state.scan_data[barcode]}")
 
-# النتيجة
-if "scanned_barcode" in st.session_state:
-    st.success(f"✅ Barcode Scanned: {st.session_state['scanned_barcode']}")
+    # Step 3: Display scanned data
+    st.subheader("Scanned Results:")
+    scanned_df = pd.DataFrame([
+        {"Barcodes": code, "Actual Quantity": qty}
+        for code, qty in st.session_state.scan_data.items()
+    ])
+
+    # Merge with original data
+    merged = pd.merge(df, scanned_df, on="Barcodes", how="left")
+    merged["Actual Quantity"] = merged["Actual Quantity"].fillna(0).astype(int)
+    merged["Difference"] = merged["Actual Quantity"] - merged["Available Quantity"]
+
+    st.dataframe(merged, use_container_width=True)
+
+    # Step 4: Export
+    csv = merged.to_csv(index=False).encode('utf-8')
+    now = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
+    st.download_button("📥 Download CSV", data=csv, file_name=f"inventory_scan_{now}.csv", mime='text/csv')
+
+    # Step 5: Clear scans
+    if st.button("🗑️ Reset Scans"):
+        st.session_state.scan_data = {}
+        st.success("Scan data cleared.")
