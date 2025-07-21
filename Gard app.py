@@ -30,16 +30,20 @@ if uploaded_file and "df" not in st.session_state:
 if "df" in st.session_state:
     df = st.session_state.df
 
-    st.subheader("📸 Scan Barcode (Camera & Input)")
+    st.subheader("📸 Scan or Enter Barcode")
 
+    # HTML + JS for barcode scanner (small box)
     html_code = """
     <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
-    <div id="reader" style="width: 250px; margin: auto;"></div>
+    <div id="reader" style="width: 200px; margin: auto;"></div>
     <script>
-    function sendBarcode(barcode) {
-        const streamlitEvent = new CustomEvent("barcode_scanned", {detail: barcode});
-        window.dispatchEvent(streamlitEvent);
-    }
+    const sendBarcodeToStreamlit = (barcode) => {
+        const inputField = window.parent.document.querySelector('input[aria-label="Barcode Input"]');
+        if(inputField){
+            inputField.value = barcode;
+            inputField.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+    };
 
     let lastResult = null;
     const html5QrcodeScanner = new Html5QrcodeScanner(
@@ -48,18 +52,14 @@ if "df" in st.session_state:
     html5QrcodeScanner.render((decodedText, decodedResult) => {
         if (decodedText !== lastResult) {
             lastResult = decodedText;
-            sendBarcode(decodedText);
+            sendBarcodeToStreamlit(decodedText);
         }
     });
     </script>
     """
 
-    # استخدام st.query_params بدل st.experimental_get_query_params
-    barcode = st.query_params.get("barcode", [""])[0]
-
-    st.components.v1.html(html_code, height=280)
-
-    manual_barcode = st.text_input("Or enter barcode manually")
+    # unified barcode input field
+    barcode = st.text_input("Barcode Input", key="barcode_input")
 
     def add_barcode(bc):
         if bc in df["Barcodes"].astype(str).values:
@@ -70,13 +70,13 @@ if "df" in st.session_state:
         else:
             st.warning(f"❌ Barcode '{bc}' not found.")
 
-    if barcode:
-        add_barcode(barcode)
-        st.experimental_set_query_params(barcode="")
+    # Trigger count when barcode changes and is non-empty
+    if barcode and barcode.strip():
+        add_barcode(barcode.strip())
+        # Clear the input after processing to allow scanning next barcode
+        st.session_state.barcode_input = ""
 
-    if manual_barcode:
-        add_barcode(manual_barcode.strip())
-        st.experimental_rerun()
+    st.components.v1.html(html_code, height=260)
 
     st.dataframe(df, use_container_width=True)
 
