@@ -11,8 +11,6 @@ if "sheets" not in st.session_state:
     st.session_state.sheets = []
 if "selected_sheet" not in st.session_state:
     st.session_state.selected_sheet = None
-if "barcode_input" not in st.session_state:
-    st.session_state.barcode_input = ""
 
 # رفع الملف
 uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"])
@@ -30,19 +28,17 @@ if st.session_state.sheets:
 if st.session_state.uploaded_file and st.session_state.selected_sheet:
     df = pd.read_excel(st.session_state.uploaded_file, sheet_name=st.session_state.selected_sheet)
     
-    df["Barcodes"] = df["Barcodes"].astype(str).str.strip()  # تأكيد تنسيق الباركودات
+    df["Barcodes"] = df["Barcodes"].astype(str).str.strip()
 
     # إنشاء العمود لو مش موجود
     if "Actual Quantity" not in df.columns:
         df["Actual Quantity"] = 0
 
-    # معالجة القيم الفارغة وتحويلها لأرقام
     df["Actual Quantity"] = df["Actual Quantity"].fillna(0).astype(int)
 
     # إدخال الباركود
-    barcode = st.text_input("🔍 Scan or Enter Barcode", value=st.session_state.barcode_input)
+    barcode = st.text_input("🔍 Scan or Enter Barcode", key="barcode_input")
 
-    # التعامل مع الباركود
     if barcode:
         barcode = barcode.strip()
         matches = df[df["Barcodes"] == barcode].index.tolist()
@@ -54,7 +50,7 @@ if st.session_state.uploaded_file and st.session_state.selected_sheet:
         else:
             st.error(f"❌ Barcode {barcode} not found in selected sheet.")
 
-        # تنظيف الخانة بعد الإدخال
+        # مسح خانة الباركود بعد الضرب
         st.session_state.barcode_input = ""
 
     # عرض الجدول
