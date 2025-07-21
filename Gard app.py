@@ -15,6 +15,8 @@ if 'df' not in st.session_state:
     st.session_state.df = None
 if 'barcode_input' not in st.session_state:
     st.session_state.barcode_input = ""
+if 'product_name_display' not in st.session_state:
+    st.session_state.product_name_display = ""
 
 # Uploading the file (only if not already uploaded)
 if st.session_state.uploaded_file is None:
@@ -52,31 +54,28 @@ if st.session_state.df is not None:
     st.markdown("### 📸 Scan a Barcode")
     barcode = st.text_input("Scan Barcode", key="barcode_input", value="", label_visibility="collapsed")
 
-    product_name_display = ""
+    # Always show last product scanned
+    st.markdown("#### 🏷️ Product Name")
+    st.markdown(f"""
+        <div style="padding: 10px; background-color: #e6f4ea; border: 2px solid #2e7d32;
+                    border-radius: 5px; font-weight: bold; font-size: 16px;">
+            {st.session_state.product_name_display}
+        </div>
+    """, unsafe_allow_html=True)
+
     if barcode:
         barcode = barcode.strip()
         if barcode in df["Barcodes"].values:
             current_qty = df.loc[df["Barcodes"] == barcode, "Actual Quantity"].values[0]
             df.loc[df["Barcodes"] == barcode, "Actual Quantity"] = current_qty + 1
-            product_name_display = df.loc[df["Barcodes"] == barcode, "Product Name"].values[0]
+            product_name = df.loc[df["Barcodes"] == barcode, "Product Name"].values[0]
+            st.session_state.product_name_display = product_name
         else:
-            product_name_display = "❌ Not Found"
+            st.session_state.product_name_display = "❌ Not Found"
 
         st.session_state.df = df
-        st.session_state.barcode_input = ""  # Clear input
-
-        # Rerun to reset text_input
-        st.experimental_rerun()
-
-    # Display result
-    if product_name_display:
-        st.markdown("#### 🏷️ Product Name")
-        st.markdown(f"""
-            <div style="padding: 10px; background-color: #e6f4ea; border: 2px solid #2e7d32;
-                        border-radius: 5px; font-weight: bold; font-size: 16px;">
-                {product_name_display}
-            </div>
-        """, unsafe_allow_html=True)
+        st.session_state.barcode_input = ""  # Move this BEFORE rerun
+        st.experimental_rerun()  # Rerun the app
 
     # Show updated table
     df["Difference"] = df["Actual Quantity"] - df["Available Quantity"]
