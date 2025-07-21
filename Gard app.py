@@ -5,10 +5,9 @@ import io
 st.set_page_config(page_title="📦 Inventory Scanner", layout="wide")
 st.title("📦 Inventory Scanner App")
 
-# Step 1: Upload the file
+# Step 1: Upload file
 uploaded_file = st.file_uploader("Upload your inventory file", type=["csv", "xlsx"])
 
-# Load the file only once
 if uploaded_file and "df" not in st.session_state:
     try:
         if uploaded_file.name.endswith(".csv"):
@@ -24,7 +23,7 @@ if uploaded_file and "df" not in st.session_state:
         df["Difference"] = df["Actual Quantity"] - df["Available Quantity"]
 
         st.session_state.df = df
-        st.session_state.last_barcode = ""
+        st.session_state.last_scanned = ""  # نستخدمه لمتابعة آخر باركود
 
         st.success("✅ File loaded successfully!")
 
@@ -32,35 +31,32 @@ if uploaded_file and "df" not in st.session_state:
         st.error(f"Error reading file: {e}")
         st.stop()
 
-# Step 2: Scan barcode
+# Step 2: Handle scanning
 if "df" in st.session_state:
     df = st.session_state.df
     st.subheader("📸 Scan Barcode")
 
-    # Always render input
-    barcode_input = st.text_input("Scan or enter barcode")
+    barcode = st.text_input("Scan or enter barcode manually", value="", key="scan_input")
 
-    # Only handle if changed
-    if barcode_input and barcode_input != st.session_state.get("last_barcode", ""):
-        barcode_input = barcode_input.strip()
-
-        if barcode_input in df["Barcodes"].astype(str).values:
-            df.loc[df["Barcodes"].astype(str) == barcode_input, "Actual Quantity"] += 1
+    # لو الباركود اتغير عن آخر واحد اتسجل
+    if barcode and barcode != st.session_state.get("last_scanned", ""):
+        barcode = barcode.strip()
+        if barcode in df["Barcodes"].astype(str).values:
+            df.loc[df["Barcodes"].astype(str) == barcode, "Actual Quantity"] += 1
             df["Difference"] = df["Actual Quantity"] - df["Available Quantity"]
-            st.success(f"✅ Barcode {barcode_input} counted.")
+            st.success(f"✅ Barcode {barcode} counted.")
         else:
-            st.warning(f"❌ Barcode '{barcode_input}' not found.")
+            st.warning(f"❌ Barcode '{barcode}' not found.")
 
         st.session_state.df = df
-        st.session_state.last_barcode = barcode_input
+        st.session_state.last_scanned = barcode  # نحفظ آخر باركود
 
-        # Rerun to clear input (won’t throw error if done after state is set properly)
         st.experimental_rerun()
 
-    # Show updated table
+    # عرض الجدول
     st.dataframe(df, use_container_width=True)
 
-    # Download updated file
+    # زر التحميل
     buffer = io.BytesIO()
     df.to_excel(buffer, index=False)
 
