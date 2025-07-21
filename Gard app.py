@@ -9,11 +9,13 @@ if 'barcode_counts' not in st.session_state:
     st.session_state.barcode_counts = {}
 if 'barcode_input' not in st.session_state:
     st.session_state.barcode_input = ""
+if 'df' not in st.session_state:
+    st.session_state.df = None
 
 # File uploader
 uploaded_file = st.file_uploader("Upload Inventory Excel File", type=["xlsx"])
 
-if uploaded_file:
+if uploaded_file and st.session_state.df is None:
     all_sheets = pd.read_excel(uploaded_file, sheet_name=None)
     sheet_names = list(all_sheets.keys())
     selected_sheet = st.selectbox("Select Brand Sheet", sheet_names)
@@ -29,6 +31,11 @@ if uploaded_file:
     # تنظيف الأعمدة
     df["Barcodes"] = df["Barcodes"].astype(str).str.strip()
     df["Actual Quantity"] = df["Actual Quantity"].fillna(0).astype(int)
+
+    st.session_state.df = df.copy()
+
+if st.session_state.df is not None:
+    df = st.session_state.df  # اشتغل على النسخة الموجودة في السيشن
 
     # سكان باركود
     st.markdown("### 📸 Scan Barcode")
@@ -54,6 +61,9 @@ if uploaded_file:
             product_name_display = df.loc[df["Barcodes"] == scanned, "Product Name"].values[0]
         else:
             product_name_display = "❌ Not Found"
+
+        # حفظ التحديث
+        st.session_state.df = df
 
         # Reset input
         st.session_state.barcode_input = ""
