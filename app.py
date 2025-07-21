@@ -1,100 +1,74 @@
 import streamlit as st
 import pandas as pd
-from io import StringIO
-import datetime
+import streamlit.components.v1 as components
 
-st.set_page_config(page_title="📦 Inventory Scanner", layout="wide")
-st.title("📷 Inventory Scanner with Camera")
+st.set_page_config(page_title="Inventory Camera App", layout="wide")
+st.title("📦 Inventory Scanner with Camera")
 
-# Step 1: Upload products sheet
-uploaded_file = st.file_uploader("Upload Product Sheet (CSV or Excel)", type=["csv", "xlsx"])
-if uploaded_file:
-    if uploaded_file.name.endswith(".csv"):
-        df = pd.read_csv(uploaded_file)
+# Step 1: Upload products file
+products_file = st.file_uploader("Upload Products File (CSV or Excel with 'Barcodes' & 'Available Quantity')", type=['csv', 'xlsx'])
+
+if products_file:
+    if products_file.name.endswith('.csv'):
+        df = pd.read_csv(products_file)
     else:
-        df = pd.read_excel(uploaded_file)
+        df = pd.read_excel(products_file)
 
-    # Ensure columns exist
-    if not {"Barcodes", "Available Quantity"}.issubset(df.columns):
-        st.error("Sheet must include 'Barcodes' and 'Available Quantity'.")
-        st.stop()
+    # Ensure required columns exist
+    if 'Barcodes' not in df.columns or 'Available Quantity' not in df.columns:
+        st.error("File must contain 'Barcodes' and 'Available Quantity' columns.")
+    else:
+        df['Actual Quantity'] = 0
 
-    # Force Barcodes to string for safe merging
-    df["Barcodes"] = df["Barcodes"].astype(str)
+        st.markdown("## Scan Barcodes")
 
-    # Session state for scan counts
-    if "scan_data" not in st.session_state:
-        st.session_state.scan_data = {}
-
-    # === Barcode scanner via camera ===
-    st.subheader("📸 Scan Barcode")
-    barcode = st.text_input("Scanned barcode will appear here", key="barcode_input")
-
-    # Embed HTML5 camera barcode scanner
-    st.components.v1.html(
-        """
-        <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
-        <div id="reader" style="width: 300px;"></div>
-        <script>
-        function domReady(fn) {
-            if (document.readyState === "interactive" || document.readyState === "complete") {
-                fn();
-            } else {
-                document.addEventListener("DOMContentLoaded", fn);
-            }
-        }
-
-        domReady(function () {
-            let lastResult = "";
-            const html5QrCode = new Html5Qrcode("reader");
-            const config = { fps: 10, qrbox: 250 };
-
-            html5QrCode.start(
-                { facingMode: "environment" },
-                config,
-                (decodedText, decodedResult) => {
-                    if (decodedText !== lastResult) {
-                        lastResult = decodedText;
-                        const input = window.parent.document.querySelector('input[id="barcode_input"]');
-                        const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
-                        nativeInputValueSetter.call(input, decodedText);
-                        input.dispatchEvent(new Event('input', { bubbles: true }));
+        # HTML + JS barcode scanner using html5-qrcode
+        components.html("""
+            <div>
+                <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+                <div id="reader" width="600px"></div>
+                <script>
+                    function onScanSuccess(decodedText, decodedResult) {
+                        const input = window.parent.document.querySelector('input[data-testid="stTextInput"]');
+                        input.value = decodedText;
+                        const event = new Event('input', { bubbles: true });
+                        input.dispatchEvent(event);
                     }
-                }
-            );
-        });
-        </script>
-        """,
-        height=320,
-    )
+                    const html5QrCode = new Html5Qrcode("reader");
+                    html5QrCode.start(
+                        { facingMode: "environment" },
+                        { fps: 10, qrbox: 250 },
+                        onScanSuccess);
+                </script>
+            </div>
+        """, height=300)
 
-    # Count scan
-    if barcode:
-        barcode = barcode.strip()
-        st.session_state.scan_data[barcode] = st.session_state.scan_data.get(barcode, 0) + 1
-        st.success(f"Scanned: {barcode} | Total: {st.session_state.scan_data[barcode]}")
+        # Hidden input to receive scanned barcode
+        scanned_barcode = st.text_input("Scanned Barcode (auto-filled)")
 
-    # Create scanned dataframe
-    scanned_df = pd.DataFrame([
-        {"Barcodes": code, "Actual Quantity": qty}
-        for code, qty in st.session_state.scan_data.items()
-    ])
-    scanned_df["Barcodes"] = scanned_df["Barcodes"].astype(str)
+        if scanned_barcode:
+            if scanned_barcode in df['Barcodes'].values:
+                df.loc[df['Barcodes'] == scanned_barcode, 'Actual Quantity'] += 1
+                st.success(f"✅ Counted 1 more for barcode: {scanned_barcode}")
+            else:
+                st.warning(f"❌ Barcode not found: {scanned_barcode}")
 
-    # Merge & calculate difference
-    merged = pd.merge(df, scanned_df, on="Barcodes", how="left")
-    merged["Actual Quantity"] = merged["Actual Quantity"].fillna(0).astype(int)
-    merged["Difference"] = merged["Actual Quantity"] - merged["Available Quantity"]
+        # Compute difference
+        df['Difference'] = df['Actual Quantity'] - df['Available Quantity']
 
-    st.subheader("📊 Scanned Data")
-    st.dataframe(merged, use_container_width=True)
+        st.markdown("## Final Inventory Table")
+        st.dataframe(df)
 
-    # Download
-    csv = merged.to_csv(index=False).encode('utf-8')
-    now = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
-    st.download_button("📥 Download CSV", data=csv, file_name=f"inventory_scan_{now}.csv", mime='text/csv')
+        # Export
+        @st.cache_data
+        def convert_df(df):
+            return df.to_csv(index=False).encode('utf-8')
 
-    # Reset
-    if st.button("🔁 Reset Scans"):
-        st.session_state.scan_data = {}
-        st.success("Scan data cleared.")
+        csv = convert_df(df)
+        st.download_button(
+            "📥 Download Final CSV",
+            csv,
+            "final_inventory.csv",
+            "text/csv",
+            key='download-csv'
+        )
