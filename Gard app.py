@@ -1,69 +1,67 @@
 import streamlit as st
 import pandas as pd
 
-st.set_page_config(page_title="📦 Inventory Scanner", layout="wide")
-st.title("📦 Inventory Scanner App")
+st.set_page_config(page_title="📦 Domanza Inventory App", layout="wide")
 
-# لتحميل ملف الإكسل
-uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"])
+st.title("📦 Domanza Inventory App")
+st.markdown("### اسكان الباركود وإدارة الجرد")
+
+# رفع ملف الإكسل
+uploaded_file = st.file_uploader("ارفع ملف يحتوي على الأعمدة: Barcodes و Available Quantity", type=["xlsx"])
 
 if uploaded_file:
-    xls = pd.ExcelFile(uploaded_file)
-    sheet_names = xls.sheet_names
-    sheet_choice = st.selectbox("Select Sheet", sheet_names)
+    try:
+        df = pd.read_excel(uploaded_file)
 
-    if sheet_choice:
-        df = pd.read_excel(xls, sheet_name=sheet_choice)
+        # تأكد من وجود الأعمدة المطلوبة
+        if not {"Barcodes", "Available Quantity"}.issubset(df.columns):
+            st.error("❌ الشيت لازم يحتوي على الأعمدة: Barcodes و Available Quantity")
+            st.stop()
 
-        # التأكد من وجود الأعمدة المطلوبة
-        required_columns = ["Barcodes", "Available Quantity"]
-        if all(col in df.columns for col in required_columns):
+        # تهيئة session_state لتخزين النتائج
+        if "scanned_data" not in st.session_state:
+            columns = df.columns.tolist() + ["Actual Quantity", "Difference"]
+            columns = list(dict.fromkeys(columns))  # إزالة الأعمدة المكررة
+            st.session_state.scanned_data = pd.DataFrame(columns=columns)
 
-            # تحويل العمود لسترينج لتسهيل المطابقة
-            df["Barcodes"] = df["Barcodes"].astype(str)
+        # إدخال الباركود
+        barcode = st.text_input("📷 Scan Barcode", key="barcode_input")
 
-            # جدول الإدخال
-            st.subheader("Scan or Enter Barcode")
-            if "barcode_input" not in st.session_state:
-                st.session_state.barcode_input = ""
+        if barcode:
+            # البحث عن الباركود
+            match = df[df["Barcodes"] == barcode]
+            if not match.empty:
+                row = match.iloc[0].to_dict()
+                row["Actual Quantity"] = 1
+                row["Difference"] = row["Actual Quantity"] - row["Available Quantity"]
 
-            barcode = st.text_input("Barcode", value=st.session_state.barcode_input, label_visibility="collapsed")
+                new_row_df = pd.DataFrame([row])
+                new_row_df = new_row_df.loc[:, ~new_row_df.columns.duplicated()]  # إزالة الأعمدة المكررة
 
-            # جدول لعرض النتائج المحدثة
-            if "scanned_data" not in st.session_state:
-                st.session_state.scanned_data = pd.DataFrame(columns=df.columns.tolist() + ["Actual Quantity", "Difference"])
+                st.session_state.scanned_data = pd.concat([
+                    st.session_state.scanned_data,
+                    new_row_df
+                ], ignore_index=True)
 
-            if barcode:
-                match = df[df["Barcodes"] == barcode]
-                if not match.empty:
-                    row = match.iloc[0].to_dict()
-                    row["Actual Quantity"] = 1
+            else:
+                st.warning("⚠️ الباركود غير موجود في الشيت")
 
-                    # لو الباركود اتسجل قبل كده
-                    existing_index = st.session_state.scanned_data[st.session_state.scanned_data["Barcodes"] == barcode].index
-                    if not existing_index.empty:
-                        idx = existing_index[0]
-                        st.session_state.scanned_data.at[idx, "Actual Quantity"] += 1
-                    else:
-                        st.session_state.scanned_data = pd.concat([
-                            st.session_state.scanned_data,
-                            pd.DataFrame([row])
-                        ], ignore_index=True)
+            # تفريغ خانة الباركود بعد كل مسح
+            st.experimental_rerun()
 
-                    # إعادة تعيين حقل الإدخال بدون تغيير باقي الصفحة
-                    st.experimental_rerun()
-
-            # حساب الفروقات
-            st.session_state.scanned_data["Difference"] = (
-                st.session_state.scanned_data["Actual Quantity"] - st.session_state.scanned_data["Available Quantity"]
-            )
-
-            # عرض النتيجة
-            st.subheader("Scanned Summary")
+        # عرض البيانات الممسوحة
+        if not st.session_state.scanned_data.empty:
             st.dataframe(st.session_state.scanned_data, use_container_width=True)
 
-        else:
-            st.error("❌ Sheet must contain 'Barcodes' and 'Available Quantity' columns.")
+            # تحميل النتائج
+            st.download_button(
+                label="⬇️ تحميل النتائج كـ Excel",
+                data=st.session_state.scanned_data.to_csv(index=False).encode("utf-8-sig"),
+                file_name="scanned_inventory.csv",
+                mime="text/csv"
+            )
 
+    except Exception as e:
+        st.error(f"حدث خطأ أثناء قراءة الملف: {e}")
 else:
-    st.info("⬆️ Please upload an Excel file to begin.")
+    st.info("📂 من فضلك ارفع ملف Excel أولاً")
