@@ -18,19 +18,18 @@ if 'selected_sheet' not in st.session_state:
 if 'df' not in st.session_state:
     st.session_state.df = None
 
-# Step 1: File upload (دائمًا ظاهر)
-st.markdown("### 📤 Upload Inventory File")
-uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"], key="file_uploader")
-
-if uploaded_file:
-    if uploaded_file != st.session_state.uploaded_file:
+# Step 1: File upload (فقط لو لسه ما اترفعش)
+if st.session_state.uploaded_file is None:
+    st.markdown("### 📤 Upload Inventory File")
+    uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"], key="file_uploader")
+    if uploaded_file:
         all_sheets = pd.read_excel(uploaded_file, sheet_name=None)
         st.session_state.uploaded_file = uploaded_file
         st.session_state.sheet_names = list(all_sheets.keys())
         st.session_state.selected_sheet = None
         st.session_state.df = None
 
-# Step 2: Show dropdown if sheets available
+# Step 2: Dropdown
 if st.session_state.uploaded_file and st.session_state.sheet_names:
     st.session_state.selected_sheet = st.selectbox("Select Brand Sheet", st.session_state.sheet_names)
 
@@ -59,14 +58,10 @@ if st.session_state.df is not None:
 
     if scanned:
         scanned = scanned.strip()
-        if scanned in st.session_state.barcode_counts:
-            st.session_state.barcode_counts[scanned] += 1
-        else:
-            st.session_state.barcode_counts[scanned] = 1
 
         if scanned in df["Barcodes"].values:
-            count = st.session_state.barcode_counts[scanned]
-            df.loc[df["Barcodes"] == scanned, "Actual Quantity"] = count
+            current_qty = df.loc[df["Barcodes"] == scanned, "Actual Quantity"].values[0]
+            df.loc[df["Barcodes"] == scanned, "Actual Quantity"] = current_qty + 1
             product_name_display = df.loc[df["Barcodes"] == scanned, "Product Name"].values[0]
         else:
             product_name_display = "❌ Not Found"
@@ -92,10 +87,7 @@ if st.session_state.df is not None:
 
     # Barcode log
     st.markdown("### ✅ Scanned Barcode Log")
-    st.write(pd.DataFrame([
-        {"Barcode": k, "Scanned Count": v}
-        for k, v in st.session_state.barcode_counts.items()
-    ]))
+    st.write(df[df["Actual Quantity"] > 0][["Barcodes", "Actual Quantity"]])
 
     # Download CSV
     @st.cache_data
