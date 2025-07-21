@@ -19,7 +19,6 @@ if brand_list:
     selected_brand = st.selectbox("Select Brand", brand_list)
     df = st.session_state["sheets_data"][selected_brand]
 
-    # تأكد من الأعمدة المطلوبة
     for col in ["Barcodes", "Available Quantity"]:
         if col not in df.columns:
             st.error(f"Missing required column: {col}")
@@ -40,13 +39,15 @@ if brand_list:
                 st.success(f"Barcode {barcode} counted.")
             else:
                 st.warning(f"Barcode {barcode} not found.")
-            return ""
-        return barcode
+            return True  # Barcode processed
+        return False
 
-    barcode = st.text_input("Scan or enter barcode", value="", key="barcode_input", on_change=None)
-    if barcode:
-        # هنا بدون استخدام st.experimental_rerun()
-        st.session_state["barcode_input"] = process_barcode(barcode)
+    barcode = st.text_input("Scan or enter barcode", key="barcode_input")
+
+    if st.button("Process Barcode"):
+        if process_barcode(barcode):
+            # تفريغ الخانة بعد المعالجة عن طريق إعادة ضبط الـ session state يدوي من الزر
+            st.session_state["barcode_input"] = ""
 
     st.dataframe(df, use_container_width=True)
 
