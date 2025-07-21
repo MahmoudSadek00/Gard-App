@@ -27,34 +27,36 @@ if uploaded_file:
     # سكان باركود
     st.markdown("### 📸 Scan Barcode")
 
-    cols = st.columns([2, 2])  # خليتين جنب بعض: واحدة للباركود، والتانية لاسم المنتج
+    cols = st.columns([2, 2])  # خليتين: باركود واسم المنتج
+    product_name_display = ""
 
     with cols[0]:
-        barcode_input = st.text_input("Scan Here", value="", label_visibility="visible")
-
-    product_name_display = ""
+        barcode_input = st.text_input("Scan Barcode", value="", label_visibility="visible")
 
     if barcode_input:
         barcode_input = barcode_input.strip()
 
-        # جلب اسم المنتج
-        matched_product = df.loc[df["Barcodes"] == barcode_input, "Product Name"]
-        if not matched_product.empty:
-            product_name_display = matched_product.iloc[0]
+        # جلب المنتج
+        match = df["Barcodes"] == barcode_input
+        if match.any():
+            product_name_display = df.loc[match, "Product Name"].values[0]
+            df.loc[match, "Actual Quantity"] += 1  # ✅ تزود الكمية
         else:
             product_name_display = "❌ Not Found"
 
-        # تحديث الكمية
-        df.loc[df["Barcodes"] == barcode_input, "Actual Quantity"] = 1
-
     with cols[1]:
-        st.text_input("🧾 Product Name", value=product_name_display, disabled=True)
+        st.markdown(f"""
+            <div style="padding: 0.75rem 1rem; background-color: #e6f4ea; border: 2px solid #2e7d32;
+                        border-radius: 5px; font-weight: bold; font-size: 16px;">
+                {product_name_display}
+            </div>
+        """, unsafe_allow_html=True)
 
-    # تحديث الفرق تلقائي
+    # تحديث الفرق
     if "Difference" in df.columns:
         df["Difference"] = df["Actual Quantity"] - df["Available Quantity"]
 
-    # عرض الشيت
+    # عرض الجدول
     st.subheader("📋 Updated Sheet")
     st.dataframe(df)
 
