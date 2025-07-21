@@ -2,62 +2,57 @@ import streamlit as st
 import pandas as pd
 
 st.set_page_config(page_title="📦 Inventory Scanner", layout="wide")
-st.title("📦 Domanza Inventory App with Barcode Scanner")
+st.title("📦 Domanza Inventory App with Camera")
 
-# تحميل ملف الإكسل
-uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx", "xls"])
+# إعداد session state
+if 'scanned_barcodes' not in st.session_state:
+    st.session_state.scanned_barcodes = []
 
+# رفع ملف الإكسل
+uploaded_file = st.file_uploader("ارفع ملف الجرد (Excel فقط)", type=["xlsx"])
+
+# اختيار الشيت
 if uploaded_file:
-    # قراءة كل الـ sheets مرة واحدة
-    xls = pd.ExcelFile(uploaded_file)
-    sheet_names = xls.sheet_names
-    sheets_data = {name: xls.parse(name) for name in sheet_names}
+    all_sheets = pd.read_excel(uploaded_file, sheet_name=None)
+    sheet_names = list(all_sheets.keys())
 
-    # اختيار الشيت (البراند) من Dropdown
-    selected_sheet = st.selectbox("Select a brand sheet:", sheet_names)
+    selected_sheet = st.selectbox("اختر البراند (Sheet)", sheet_names)
+    df = all_sheets[selected_sheet]
+    df = df.rename(columns=lambda x: x.strip())
 
-    # الشيت اللي اختاره المستخدم
-    df = sheets_data[selected_sheet]
+    if "Barcodes" not in df.columns or "Available Quantity" not in df.columns:
+        st.error("لازم يكون في عمود 'Barcodes' و 'Available Quantity' في الشيت")
+        st.stop()
 
-    # تأكد من وجود الأعمدة المطلوبة
-    if "Barcodes" in df.columns and "Available Quantity" in df.columns:
-        # باركود سكان سريع
-        barcode = st.text_input("Scan or enter barcode")
+    # كاميرا الباركود (مربع الإدخال)
+    st.markdown("### 📸 اسكان الباركود بالكاميرا أو الموبايل")
+    barcode_input = st.text_input("👈 اسكان الباركود هنا", value="", label_visibility="collapsed")
 
-        if "scanned" not in st.session_state:
-            st.session_state.scanned = {}
+    # تحديث الباركودات
+    if barcode_input:
+        st.session_state.scanned_barcodes.append(barcode_input)
+        st.experimental_rerun()
 
-        # تحديث الكمية لو الباركود متسجل
-        if barcode:
-            if barcode in df["Barcodes"].astype(str).values:
-                if barcode not in st.session_state.scanned:
-                    st.session_state.scanned[barcode] = 1
-                else:
-                    st.session_state.scanned[barcode] += 1
-                st.experimental_rerun()  # إعادة تحميل الصفحة تلقائيًا بعد كل إدخال
+    # تجهيز DataFrame للباركودات
+    scanned_df = pd.DataFrame(st.session_state.scanned_barcodes, columns=["Barcodes"])
+    scanned_df["Actual Quantity"] = 1
+    scanned_df = scanned_df.groupby("Barcodes").sum().reset_index()
 
-        # إنشاء DataFrame من الباركودات اللي تم سكانها
-        scanned_df = pd.DataFrame.from_dict(st.session_state.scanned, orient="index", columns=["Actual Quantity"])
-        scanned_df.reset_index(inplace=True)
-        scanned_df.rename(columns={"index": "Barcodes"}, inplace=True)
-
-        # دمج الداتا الأصلية مع السكان
+    # Merge لما يبقى في سكان فعلي
+    if not scanned_df.empty:
         merged = pd.merge(df, scanned_df, on="Barcodes", how="left")
         merged["Actual Quantity"] = merged["Actual Quantity"].fillna(0).astype(int)
         merged["Difference"] = merged["Actual Quantity"] - merged["Available Quantity"]
 
-        st.subheader("📊 Updated Inventory")
+        st.subheader("📊 النتائج بعد الاسكان")
         st.dataframe(merged)
 
-        # تحميل الناتج
+        # زر تحميل النتائج
         @st.cache_data
         def convert_df_to_csv(df):
-            return df.to_csv(index=False).encode('utf-8')
+            return df.to_csv(index=False).encode("utf-8")
 
         csv = convert_df_to_csv(merged)
-        st.download_button("📥 Download CSV", data=csv, file_name="updated_inventory.csv", mime="text/csv")
-
+        st.download_button("📥 تحميل النتائج كـ CSV", data=csv, file_name="updated_inventory.csv", mime="text/csv")
     else:
-        st.error("❌ Required columns 'Barcodes' and 'Available Quantity' not found in selected sheet.")
-else:
-    st.info("⬆️ Please upload an Excel file to begin.")
+        st.info("👀 منتظرين سكان باركود...")
