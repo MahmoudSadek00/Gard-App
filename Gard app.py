@@ -3,7 +3,6 @@ import pandas as pd
 from datetime import datetime
 import io
 
-# HTML + JS لمسح باركود بالكاميرا (html5-qrcode) بحجم صغير تحت خانة الباركود
 CAMERA_HTML = """
 <div style="width: 300px; margin-bottom: 10px;" id="reader"></div>
 <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
@@ -26,20 +25,16 @@ uploaded_file = st.file_uploader("Upload your inventory file", type=["xlsx", "xl
 if uploaded_file:
     sheets_data = pd.read_excel(uploaded_file, sheet_name=None)
 
-    # محاولة الحصول على فروع (Branch) من أول شيت
     first_sheet_df = next(iter(sheets_data.values()))
     if 'Branch' in first_sheet_df.columns:
         branches = first_sheet_df['Branch'].dropna().unique().tolist()
         selected_branch = st.selectbox("Select Branch / Brand", branches)
-        # حاول تجيب الشيت بنفس اسم الفرع، لو مش موجود خد اول شيت
         selected_df = sheets_data.get(selected_branch, first_sheet_df)
     else:
-        # لو مفيش عمود Branch ندي اختيار من أسماء الشيتات
         sheet_names = list(sheets_data.keys())
         selected_branch = st.selectbox("Select Branch / Brand (sheet)", sheet_names)
         selected_df = sheets_data[selected_branch]
 
-    # تأكد من الأعمدة المطلوبة
     required_cols = ['Barcodes', 'Available Quantity']
     missing_cols = [col for col in required_cols if col not in selected_df.columns]
     if missing_cols:
@@ -53,10 +48,8 @@ if uploaded_file:
 
     st.subheader("Scan or enter barcode")
 
-    # عرض خانة باركود
     barcode_input = st.text_input("Enter or scan barcode", key="barcode_input")
 
-    # زر تفعيل الكاميرا مع عرض مدمج تحت الخانة
     if st.button("Toggle Camera Scanner"):
         st.session_state.show_camera = not st.session_state.get("show_camera", False)
     else:
@@ -66,20 +59,18 @@ if uploaded_file:
     if st.session_state.show_camera:
         st.components.v1.html(CAMERA_HTML, height=320, scrolling=False)
 
-    # استقبال باركود من الكاميرا (JS) عبر الرسائل
-    barcode_js = st.experimental_get_query_params().get("barcode", [""])[0]
-    # لو في باركود من الكاميرا حدث خانة الإدخال تلقائياً
+    # استخدم st.query_params بدلاً من st.experimental_get_query_params
+    barcode_js = st.query_params.get("barcode", [""])[0]
+
     if barcode_js and barcode_js != barcode_input:
         barcode_input = barcode_js
 
-    # معالجة إدخال الباركود (كتابة أو من الكاميرا)
     if barcode_input:
         barcode = barcode_input.strip()
         if barcode in selected_df['Barcodes'].astype(str).values:
             selected_df.loc[selected_df['Barcodes'].astype(str) == barcode, 'Actual Quantity'] += 1
             selected_df['Difference'] = selected_df['Actual Quantity'] - selected_df['Available Quantity']
             st.success(f"✅ Barcode {barcode} counted.")
-            # تفريغ الخانة بعد الإدخال
             st.session_state.barcode_input = ""
             st.experimental_rerun()
         else:
