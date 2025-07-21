@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import io
+from datetime import datetime
 
 st.set_page_config(page_title="📦 Inventory Scanner", layout="wide")
 st.title("📦 Inventory Scanner App")
@@ -9,79 +10,76 @@ st.title("📦 Inventory Scanner App")
 uploaded_file = st.file_uploader("Upload your inventory file (Excel with multiple sheets)", type=["xlsx"])
 
 if uploaded_file:
-    # قراءة كل الشيتات في dict
+    # قراءة كل الشيتات
     sheets_data = pd.read_excel(uploaded_file, sheet_name=None)
 
-    # حفظ في session_state عند أول تحميل
+    # حفظ البيانات في session_state لو مش موجودة أصلاً
     if "sheets_data" not in st.session_state:
         st.session_state.sheets_data = sheets_data
-        # تجهيز df لكل شيت مع Actual Quantity و Difference
-        for sheet_name, df in st.session_state.sheets_data.items():
-            if 'Barcodes' not in df.columns or 'Available Quantity' not in df.columns:
-                st.error(f"Sheet '{sheet_name}' must include 'Barcodes' and 'Available Quantity' columns")
-                st.stop()
-            df['Actual Quantity'] = 0
-            # قد تكون Difference موجودة كـ formula في الأصل، لكن هنا نحافظ على نسخة محسوبة
-            df['Difference'] = df['Actual Quantity'] - df['Available Quantity']
-            st.session_state.sheets_data[sheet_name] = df
 
-# اختيار البراند (اسم الشيت)
-selected_brand = None
-if "sheets_data" in st.session_state:
-    sheet_names = list(st.session_state.sheets_data.keys())
-    selected_brand = st.selectbox("Select Brand (Sheet)", sheet_names)
+    # استخراج أسماء الشيتات (البراندات)
+    brands = list(st.session_state.sheets_data.keys())
 
-# خانة الباركود مع زر تشغيل الكاميرا (بدون كاميرا حاليًا)
-if selected_brand:
+    # اختيار البراند من الدروب داون
+    selected_brand = st.selectbox("Select Brand", brands)
+
+    # استدعاء الداتا فريم المختارة
     df = st.session_state.sheets_data[selected_brand]
 
-    st.subheader(f"Brand: {selected_brand}")
+    # تحقق من الأعمدة المطلوبة
+    required_cols = ["Barcodes", "Available Quantity"]
+    if not all(col in df.columns for col in required_cols):
+        st.error(f"❌ Sheet '{selected_brand}' must contain columns: {required_cols}")
+        st.stop()
 
-    # خانة إدخال الباركود
-    if "barcode_input" not in st.session_state:
-        st.session_state.barcode_input = ""
+    # اضف أعمدة لو مش موجودة
+    if "Actual Quantity" not in df.columns:
+        df["Actual Quantity"] = 0
+    if "Difference" not in df.columns:
+        # لا تعمل difference صيغة، احسبها على البايثون
+        df["Difference"] = df["Actual Quantity"] - df["Available Quantity"]
 
-    barcode = st.text_input("Scan or enter barcode", key="barcode_input")
+    st.session_state.sheets_data[selected_brand] = df  # تحديث الداتا
 
-    # Toggle camera placeholder button (تفعيل الكاميرا مستقبلاً)
-    if st.button("Toggle Camera (Coming soon)"):
-        st.info("Camera functionality will be added soon.")
+    # حقل إدخال الباركود (واحد فقط)
+    barcode = st.text_input("Scan or type barcode", key="barcode_input", placeholder="Enter barcode here")
 
-    # معالجة سكان الباركود
-    if barcode and len(barcode.strip()) > 0:
+    # معالج الباركود
+    if barcode and barcode.strip() != "":
         barcode_val = barcode.strip()
-        if barcode_val in df['Barcodes'].astype(str).values:
-            df.loc[df['Barcodes'].astype(str) == barcode_val, 'Actual Quantity'] += 1
-            df['Difference'] = df['Actual Quantity'] - df['Available Quantity']
-            st.success(f"✅ Barcode '{barcode_val}' counted.")
+        if barcode_val in df["Barcodes"].astype(str).values:
+            df.loc[df["Barcodes"].astype(str) == barcode_val, "Actual Quantity"] += 1
+            df["Difference"] = df["Actual Quantity"] - df["Available Quantity"]
+            st.success(f"✅ Barcode '{barcode_val}' counted successfully.")
             st.session_state.sheets_data[selected_brand] = df
 
-            # اضبط علم المسح لمسح خانة الباركود وإعادة تشغيل آمنة
-            st.session_state.clear_barcode_input = True
-
-            st.experimental_rerun()
+            # تفريغ الحقل بدون rerun لتجنب أخطاء متكررة
+            st.session_state.barcode_input = ""
         else:
-            st.warning(f"❌ Barcode '{barcode_val}' not found in brand '{selected_brand}'.")
+            st.warning(f"❌ Barcode '{barcode_val}' not found in '{selected_brand}'.")
 
-# مسح خانة الباركود بأمان
-if st.session_state.get("clear_barcode_input", False):
-    st.session_state.barcode_input = ""
-    st.session_state.clear_barcode_input = False
+    # زر التحميل النهائي للملف مضافاً له تاريخ وبرانش (البرانش هنا البراند)
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
+        for brand_name, brand_df in st.session_state.sheets_data.items():
+            # إعادة ترتيب الأعمدة لو تحب هنا (اختياري)
+            cols_order = ["Barcodes", "Available Quantity", "Actual Quantity", "Difference"]
+            cols_present = [col for col in cols_order if col in brand_df.columns]
+            brand_df.to_excel(writer, sheet_name=brand_name[:31], index=False, columns=cols_present)
+    buffer.seek(0)
 
-# عرض الجدول النهائي فقط للبراند المحدد
-if selected_brand:
-    st.dataframe(st.session_state.sheets_data[selected_brand], use_container_width=True)
-
-    # زر تحميل الملف النهائي مجمع كل البراندات (جميع الشيتات في ملف واحد)
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        for sheet_name, df in st.session_state.sheets_data.items():
-            df.to_excel(writer, sheet_name=sheet_name, index=False)
-    output.seek(0)
+    today_str = datetime.today().strftime("%Y-%m-%d")
+    file_name = f"Inventory_{today_str}.xlsx"
 
     st.download_button(
-        label="📥 Download Full Updated Inventory",
-        data=output,
-        file_name=f"inventory_updated_{pd.Timestamp.today().strftime('%Y%m%d')}.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        label="📥 Download Updated Inventory File",
+        data=buffer,
+        file_name=file_name,
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
+
+    # عرض جدول البيانات المحدث
+    st.subheader(f"Inventory data for brand: {selected_brand}")
+    st.dataframe(df, use_container_width=True)
+else:
+    st.info("Please upload an Excel file with inventory data, containing multiple sheets for brands.")
