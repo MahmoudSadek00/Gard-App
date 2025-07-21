@@ -4,7 +4,7 @@ import pandas as pd
 st.set_page_config(page_title="📦 Inventory Scanner", layout="wide")
 st.title("📦 Domanza Inventory App with Camera")
 
-# Session state init
+# Session state to track scanned barcodes and input
 if 'scanned_barcodes' not in st.session_state:
     st.session_state.scanned_barcodes = []
 if 'barcode_input' not in st.session_state:
@@ -36,7 +36,7 @@ if uploaded_file:
     product_name_display = ""
 
     with cols[0]:
-        st.text_input("Scan Barcode", key="barcode_input")
+        st.session_state.barcode_input = st.text_input("Scan Barcode", value=st.session_state.barcode_input)
 
     if st.session_state.barcode_input:
         scanned = st.session_state.barcode_input.strip()
@@ -48,7 +48,7 @@ if uploaded_file:
         else:
             product_name_display = "❌ Not Found"
 
-        # Reset input safely
+        # Reset input safely inside the block
         st.session_state.barcode_input = ""
 
     with cols[1]:
