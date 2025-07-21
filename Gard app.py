@@ -29,24 +29,26 @@ if brand_list:
     if "Difference" not in df.columns:
         df["Difference"] = df["Actual Quantity"] - df["Available Quantity"]
 
-    def process_barcode(barcode):
-        barcode = barcode.strip()
-        if len(barcode) >= 9:
-            mask = df["Barcodes"].astype(str) == barcode
+    barcode = st.text_input("Scan or enter barcode", key="barcode_input")
+
+    # تابع معالجة الباركود
+    def process_barcode(barcode_value):
+        barcode_value = barcode_value.strip()
+        if len(barcode_value) >= 9:
+            mask = df["Barcodes"].astype(str) == barcode_value
             if mask.any():
                 df.loc[mask, "Actual Quantity"] += 1
                 df["Difference"] = df["Actual Quantity"] - df["Available Quantity"]
-                st.success(f"Barcode {barcode} counted.")
+                st.success(f"Barcode {barcode_value} counted.")
             else:
-                st.warning(f"Barcode {barcode} not found.")
-            return True  # Barcode processed
+                st.warning(f"Barcode {barcode_value} not found.")
+            return True
         return False
 
-    barcode = st.text_input("Scan or enter barcode", key="barcode_input")
-
-    if st.button("Process Barcode"):
+    # لو خانة الباركود فيها قيمة (يعني ضغط Enter أو خرج من الخانة)
+    if barcode:
         if process_barcode(barcode):
-            # تفريغ الخانة بعد المعالجة عن طريق إعادة ضبط الـ session state يدوي من الزر
+            # بعد المعالجة نفرغ الخانة من غير زرار
             st.session_state["barcode_input"] = ""
 
     st.dataframe(df, use_container_width=True)
