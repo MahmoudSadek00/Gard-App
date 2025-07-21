@@ -1,13 +1,13 @@
 import streamlit as st
 import pandas as pd
 import io
+import json
 
-st.set_page_config(page_title="Inventory Scanner with Camera", layout="wide")
-st.title("📦 Inventory Scanner with Camera (HTML5 QR Code)")
+st.set_page_config(page_title="Inventory Scanner with html5-qrcode", layout="wide")
+st.title("📦 Inventory Scanner with Camera (html5-qrcode)")
 
 # رفع ملف الإكسل أو CSV
-uploaded_file = st.file_uploader("Upload your inventory file (Excel or CSV)", type=["xlsx", "csv"])
-
+uploaded_file = st.file_uploader("Upload your inventory file (Excel or CSV)", type=["csv", "xlsx"])
 if uploaded_file:
     if uploaded_file.name.endswith(".csv"):
         df = pd.read_csv(uploaded_file)
@@ -15,64 +15,88 @@ if uploaded_file:
         df = pd.read_excel(uploaded_file)
 
     # تحقق من الأعمدة المطلوبة
-    required_cols = ['Barcodes', 'Available Quantity']
-    if not all(col in df.columns for col in required_cols):
-        st.error(f"File must contain these columns: {required_cols}")
+    if not {"Barcodes", "Available Quantity"}.issubset(df.columns):
+        st.error("File must contain 'Barcodes' and 'Available Quantity' columns.")
         st.stop()
 
-    # اضف عمود Actual Quantity إذا مش موجود
-    if 'Actual Quantity' not in df.columns:
-        df['Actual Quantity'] = 0
-    if 'Difference' not in df.columns:
-        df['Difference'] = df['Actual Quantity'] - df['Available Quantity']
+    if "Actual Quantity" not in df.columns:
+        df["Actual Quantity"] = 0
 
-    # خزن الداتا في session_state
-    st.session_state.df = df
+    if "Difference" not in df.columns:
+        df["Difference"] = df["Actual Quantity"] - df["Available Quantity"]
 
-    # عنصر html لقراءة الباركود باستخدام كاميرا الموبايل
-    barcode_html = """
+    if "df" not in st.session_state:
+        st.session_state.df = df
+
+    df = st.session_state.df
+
+    # مساحة لعرض رسالة سكان باركود من html5-qrcode
+    scanned_barcode = st.empty()
+
+    # Html+JS لكاميرا سكانر باستخدام مكتبة html5-qrcode
+    html_code = """
     <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
-    <div style="width: 100%; max-width: 500px;" id="reader"></div>
+    <div id="reader" style="width: 400px;"></div>
     <script>
-        function onScanSuccess(decodedText, decodedResult) {
-            // إرسال القيمة للستريمليت عبر تحديث عنوان الصفحة (URL)
-            window.parent.postMessage({barcode: decodedText}, "*");
-            // لإيقاف المسح مؤقتاً
-            html5QrcodeScanner.clear();
+    function sendBarcode(barcode) {
+        const streamlitEvent = new CustomEvent("barcode_scanned", {detail: barcode});
+        window.dispatchEvent(streamlitEvent);
+    }
+
+    let lastResult = null;
+    const html5QrcodeScanner = new Html5QrcodeScanner(
+        "reader", { fps: 10, qrbox: 250 });
+
+    html5QrcodeScanner.render((decodedText, decodedResult) => {
+        if (decodedText !== lastResult) {
+            lastResult = decodedText;
+            sendBarcode(decodedText);
         }
-        var html5QrcodeScanner = new Html5QrcodeScanner(
-            "reader", { fps: 10, qrbox: 250 }, /* verbose= */ false);
-        html5QrcodeScanner.render(onScanSuccess);
+    });
     </script>
     """
 
-    # نعرض ال html داخل Streamlit
-    st.components.v1.html(barcode_html, height=400)
+    # استقبال الباركود المرسل من JS داخل البايثون
+    barcode = st.experimental_get_query_params().get("barcode", [None])[0]
 
-    # استقبال الباركود المرسل من الـ JS
-    from streamlit_javascript import st_javascript
-    scanned_code = st_javascript("window.addEventListener('message', event => { if(event.data.barcode) { window.streamlit.setComponentValue(event.data.barcode); } });")
+    # تعريف دالة JS listener
+    st.components.v1.html(html_code, height=450)
 
-    if scanned_code:
-        # كل مرة يتم سكان يتضاف لل Actual Quantity
-        df = st.session_state.df
-        barcode = scanned_code.strip()
-        if barcode in df["Barcodes"].astype(str).values:
-            df.loc[df["Barcodes"].astype(str) == barcode, "Actual Quantity"] += 1
+    # Handle barcode reception using Streamlit's custom event listener workaround
+    # لكن Streamlit لا يدعم JS event مباشر، الحل إنك تبعت قيمة للبايثون عن طريق استخدام 
+    # trick بإعادة تحميل الصفحة مع باراميتر ?barcode=xxx
+    # لكن ده غير عملي في حالة سكان مستمر.
+
+    # بديل بسيط: إظهار خانة إدخال للمستخدم يدخل الباركود أو يلصقه يدوياً لو قراءة الكاميرا بطلت شغالة.
+
+    manual_barcode = st.text_input("Or enter barcode manually:")
+
+    final_barcode = None
+    if manual_barcode and manual_barcode.strip():
+        final_barcode = manual_barcode.strip()
+    elif barcode:
+        final_barcode = barcode.strip()
+
+    if final_barcode:
+        if final_barcode in df["Barcodes"].astype(str).values:
+            df.loc[df["Barcodes"].astype(str) == final_barcode, "Actual Quantity"] += 1
             df["Difference"] = df["Actual Quantity"] - df["Available Quantity"]
             st.session_state.df = df
-            st.success(f"Barcode {barcode} counted!")
+            scanned_barcode.success(f"Barcode {final_barcode} counted!")
         else:
-            st.warning(f"Barcode {barcode} not found in inventory.")
+            scanned_barcode.warning(f"Barcode {final_barcode} not found in inventory.")
 
-    # عرض الجدول المحدث
-    st.dataframe(st.session_state.df)
+    st.dataframe(df, use_container_width=True)
 
     # زر تحميل الملف النهائي
     buffer = io.BytesIO()
-    st.session_state.df.to_excel(buffer, index=False)
-    st.download_button("Download updated inventory", buffer.getvalue(), "updated_inventory.xlsx")
+    df.to_excel(buffer, index=False)
+    st.download_button(
+        label="📥 Download updated inventory",
+        data=buffer.getvalue(),
+        file_name="updated_inventory.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
 
 else:
-    st.info("Please upload your inventory file to start scanning.")
-
+    st.info("Please upload an inventory file to start scanning.")
