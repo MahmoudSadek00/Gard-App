@@ -7,10 +7,10 @@ st.title("📦 Domanza Inventory App with Camera")
 # Initialize session state variables
 if 'scanned_barcodes' not in st.session_state:
     st.session_state.scanned_barcodes = []
-if 'barcode_input' not in st.session_state:
-    st.session_state.barcode_input = ""
 if 'last_scanned' not in st.session_state:
     st.session_state.last_scanned = ""
+if 'barcode_temp' not in st.session_state:
+    st.session_state.barcode_temp = ""
 
 # File uploader
 uploaded_file = st.file_uploader("Upload Inventory Excel File", type=["xlsx"])
@@ -37,7 +37,7 @@ if uploaded_file:
     barcode_col, button_col, clear_col = st.columns([4, 1, 1])
 
     with barcode_col:
-        st.text_input("Scan Barcode", key="barcode_input")
+        input_val = st.text_input("Scan Barcode", value=st.session_state.barcode_temp, key="barcode_field")
 
     with button_col:
         confirm_pressed = st.button("✔️ Confirm")
@@ -48,7 +48,7 @@ if uploaded_file:
     product_name_display = ""
 
     if confirm_pressed:
-        scanned = st.session_state.barcode_input.strip()
+        scanned = input_val.strip()
         if scanned:
             st.session_state.scanned_barcodes.append(scanned)
             st.session_state.last_scanned = scanned
@@ -59,11 +59,11 @@ if uploaded_file:
             else:
                 product_name_display = "❌ Not Found"
 
-            # Reset input field
-            st.session_state.barcode_input = ""
+            # Clear input manually
+            st.session_state.barcode_temp = ""
 
     elif clear_pressed:
-        st.session_state.barcode_input = ""
+        st.session_state.barcode_temp = ""
         st.session_state.last_scanned = ""
         product_name_display = ""
 
@@ -71,30 +71,4 @@ if uploaded_file:
         if st.session_state.last_scanned:
             scanned = st.session_state.last_scanned
             if scanned in df["Barcodes"].values:
-                product_name_display = df.loc[df["Barcodes"] == scanned, "Product Name"].values[0]
-            else:
-                product_name_display = "❌ Not Found"
-
-    # Display product name below barcode
-    st.markdown("### 🏷️ Product Name")
-    st.markdown(f"""
-        <div style="padding: 0.75rem 1rem; background-color: #e6f4ea; border: 2px solid #2e7d32;
-                    border-radius: 5px; font-weight: bold; font-size: 16px;">
-            {product_name_display}
-        </div>
-    """, unsafe_allow_html=True)
-
-    # Update difference
-    df["Difference"] = df["Actual Quantity"] - df["Available Quantity"]
-
-    # Display updated table
-    st.subheader("📋 Updated Sheet")
-    st.dataframe(df)
-
-    # Export to CSV
-    @st.cache_data
-    def convert_df_to_csv(df):
-        return df.to_csv(index=False).encode("utf-8")
-
-    csv = convert_df_to_csv(df)
-    st.download_button("📥 Download Updated Sheet", data=csv, file_name="updated_inventory.csv", mime="text/csv")
+                product_name_display = df.loc[df["Barcodes"] == sca]()
