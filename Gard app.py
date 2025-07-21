@@ -1,71 +1,83 @@
 import streamlit as st
 import pandas as pd
 
-# إعدادات الصفحة
-st.set_page_config(page_title="📦 Inventory Scanner", layout="centered")
+st.set_page_config(page_title="📦 Inventory Scanner", layout="wide")
+st.title("📦 Domanza Inventory App with Camera")
 
-# رفع ملف المنتجات
-uploaded_file = st.file_uploader("Upload Inventory File", type=["xlsx", "xls", "csv"])
-if uploaded_file is None:
-    st.stop()
+# Session state to track scanned barcodes
+if 'scanned_barcodes' not in st.session_state:
+    st.session_state.scanned_barcodes = []
 
-# قراءة البيانات
-if uploaded_file.name.endswith(".csv"):
-    df = pd.read_csv(uploaded_file)
-else:
-    df = pd.read_excel(uploaded_file)
+# File uploader
+uploaded_file = st.file_uploader("Upload Inventory Excel File", type=["xlsx"])
 
-# التحقق من الأعمدة الأساسية
-required_columns = ["Barcodes", "Available Quantity", "Actual Quantity", "Product Name"]
-for col in required_columns:
-    if col not in df.columns:
-        st.error(f"Missing required column: {col}")
+if uploaded_file:
+    all_sheets = pd.read_excel(uploaded_file, sheet_name=None)
+    sheet_names = list(all_sheets.keys())
+    selected_sheet = st.selectbox("Select Brand Sheet", sheet_names)
+    df = all_sheets[selected_sheet]
+    df.columns = df.columns.str.strip()
+
+    required_columns = ["Barcodes", "Available Quantity", "Actual Quantity", "Product Name"]
+    if not all(col in df.columns for col in required_columns):
+        st.error(f"❌ Sheet must contain these columns: {required_columns}")
+        st.write("Available columns:", df.columns.tolist())
         st.stop()
 
-# تهيئة الحالة
-if "scanned_barcodes" not in st.session_state:
-    st.session_state.scanned_barcodes = []
-if "product_name_display" not in st.session_state:
-    st.session_state.product_name_display = ""
+    # تنظيف الأعمدة
+    df["Barcodes"] = df["Barcodes"].astype(str).str.strip()
+    df["Actual Quantity"] = df["Actual Quantity"].fillna(0).astype(int)
 
-st.markdown("### 📸 Scan Product")
+    # سكان باركود
+    st.markdown("### 📸 Scan Barcode")
+    cols = st.columns([2, 2])  # خليتين: الباركود واسم المنتج
+    product_name_display = ""
 
-# باركود إنبوت
-barcode = st.text_input("Scan Barcode", key="barcode_input", placeholder="Scan barcode...", label_visibility="visible")
+    with cols[0]:
+        barcode_input = st.text_input("Scan Barcode", value="", label_visibility="visible")
 
-# عرض اسم المنتج (غير قابل للتعديل)
-st.text_input("Product Name", value=st.session_state.product_name_display, disabled=True, key="product_name_display_field", label_visibility="visible")
+    if barcode_input:
+        barcode_input = barcode_input.strip()
+        st.session_state.scanned_barcodes.append(barcode_input)  # خزن الباركود داخليًا
 
-# لو تم إدخال باركود
-if barcode:
-    barcode_clean = barcode.strip()
-    st.session_state.scanned_barcodes.append(barcode_clean)
+        # حساب عدد مرات تكراره
+        scanned_df = pd.DataFrame(st.session_state.scanned_barcodes, columns=["Barcodes"])
+        scanned_df["Actual Quantity"] = 1
+        scanned_df = scanned_df.groupby("Barcodes").sum().reset_index()
 
-    # تحديث الكمية الفعلية
-    mask = df["Barcodes"] == barcode_clean
-    if mask.any():
-        df.loc[mask, "Actual Quantity"] += 1
-        st.session_state.product_name_display = df.loc[mask, "Product Name"].values[0]
-    else:
-        st.session_state.product_name_display = "❌ Not Found"
+        # تحديث الكميات
+        for _, row in scanned_df.iterrows():
+            barcode = row["Barcodes"]
+            count = row["Actual Quantity"]
+            df.loc[df["Barcodes"] == barcode, "Actual Quantity"] = count
 
-    # إعادة ضبط الخانة
-    st.session_state["barcode_input"] = ""
-    st.experimental_rerun()
+        # عرض اسم المنتج المنور
+        if barcode_input in df["Barcodes"].values:
+            product_name_display = df.loc[df["Barcodes"] == barcode_input, "Product Name"].values[0]
+        else:
+            product_name_display = "❌ Not Found"
 
-# عرض الجدول (اختياري)
-with st.expander("📋 Current Inventory", expanded=False):
-    st.dataframe(df, use_container_width=True)
+    with cols[1]:
+        # عرض اسم المنتج بشكل منور
+        st.markdown(f"""
+            <div style="padding: 0.75rem 1rem; background-color: #e6f4ea; border: 2px solid #2e7d32;
+                        border-radius: 5px; font-weight: bold; font-size: 16px;">
+                {product_name_display}
+            </div>
+        """, unsafe_allow_html=True)
 
-# تحميل الملف بعد الجرد (اختياري)
-@st.cache_data
-def convert_df_to_excel(dataframe):
-    from io import BytesIO
-    output = BytesIO()
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        dataframe.to_excel(writer, index=False, sheet_name="Inventory")
-    output.seek(0)
-    return output
+    # تحديث الفرق
+    if "Difference" in df.columns:
+        df["Difference"] = df["Actual Quantity"] - df["Available Quantity"]
 
-excel_data = convert_df_to_excel(df)
-st.download_button("📥 Download Updated Inventory", data=excel_data, file_name="updated_inventory.xlsx")
+    # عرض الجدول النهائي
+    st.subheader("📋 Updated Sheet")
+    st.dataframe(df)
+
+    # زر التحميل
+    @st.cache_data
+    def convert_df_to_csv(df):
+        return df.to_csv(index=False).encode("utf-8")
+
+    csv = convert_df_to_csv(df)
+    st.download_button("📥 Download Updated Sheet", data=csv, file_name="updated_inventory.csv", mime="text/csv")
