@@ -41,9 +41,7 @@ if st.session_state.df is not None:
     barcode_col, button_col, clear_col = st.columns([4, 1, 1])
 
     with barcode_col:
-        scanned = st.text_input("Scan Barcode", value=st.session_state.barcode_input, key="barcode_input_field")
-
-    product_name_display = ""
+        input_val = st.text_input("Scan Barcode", value=st.session_state.barcode_input, key="barcode_input")
 
     with button_col:
         confirm_pressed = st.button("✔️ Confirm")
@@ -51,12 +49,19 @@ if st.session_state.df is not None:
     with clear_col:
         clear_pressed = st.button("🧹 Clear")
 
+    product_name_display = ""
+
+    # Update session barcode_input
+    st.session_state.barcode_input = input_val.strip()
+
+    # Clear barcode input
     if clear_pressed:
         st.session_state.barcode_input = ""
-        st.experimental_rerun()
+        st.rerun()
 
+    # Confirm barcode
     if confirm_pressed and st.session_state.barcode_input:
-        scanned = st.session_state.barcode_input.strip()
+        scanned = st.session_state.barcode_input
 
         if scanned in st.session_state.barcode_counts:
             st.session_state.barcode_counts[scanned] += 1
@@ -72,9 +77,9 @@ if st.session_state.df is not None:
 
         st.session_state.df = df
         st.session_state.barcode_input = ""
-        st.experimental_rerun()
+        st.rerun()
 
-    # Product Name Display
+    # Display product name
     st.markdown("#### 🏷️ Product Name")
     st.markdown(f"""
         <div style="padding: 0.75rem 1rem; background-color: #e6f4ea; border: 2px solid #2e7d32;
@@ -83,7 +88,7 @@ if st.session_state.df is not None:
         </div>
     """, unsafe_allow_html=True)
 
-    # Update difference and show table
+    # Update and show table
     df["Difference"] = df["Actual Quantity"] - df["Available Quantity"]
 
     st.subheader("📋 Updated Sheet")
