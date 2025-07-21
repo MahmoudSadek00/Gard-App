@@ -3,35 +3,51 @@ import pandas as pd
 import io
 from datetime import datetime
 
-st.set_page_config(page_title="📦 Inventory Scanner", layout="wide")
+st.set_page_config(page_title="Inventory Scanner", layout="wide")
 st.title("📦 Inventory Scanner App")
 
-uploaded_file = st.file_uploader("Upload your Excel inventory file", type=["xlsx"])
+# رفع ملف الإكسل (يدعم ملفات متعددة الأوراق)
+uploaded_file = st.file_uploader("Upload your inventory file (Excel with multiple sheets)", type=["xlsx"])
 
 if uploaded_file:
-    sheets = pd.read_excel(uploaded_file, sheet_name=None)
-    st.session_state["sheets_data"] = sheets
-    brand_list = list(sheets.keys())
-else:
-    brand_list = []
+    # قراءة جميع الأوراق في dict
+    sheets_data = pd.read_excel(uploaded_file, sheet_name=None)
 
-if brand_list:
-    selected_brand = st.selectbox("Select Brand", brand_list)
-    df = st.session_state["sheets_data"][selected_brand]
+    if "sheets_data" not in st.session_state:
+        st.session_state["sheets_data"] = sheets_data
 
-    for col in ["Barcodes", "Available Quantity"]:
-        if col not in df.columns:
-            st.error(f"Missing required column: {col}")
-            st.stop()
+# تأكد إن الملفات رفعت
+if "sheets_data" in st.session_state:
+    sheets_data = st.session_state["sheets_data"]
 
+    # اختيار براند (ورقة)
+    brand_selected = st.selectbox("Select Brand (Sheet)", options=list(sheets_data.keys()))
+
+    df = sheets_data[brand_selected]
+
+    # تحقق من وجود الأعمدة المطلوبة
+    if not {"Barcodes", "Available Quantity"}.issubset(df.columns):
+        st.error("❌ The sheet must have columns 'Barcodes' and 'Available Quantity'")
+        st.stop()
+
+    # جهز الأعمدة الجديدة لو مش موجودة
     if "Actual Quantity" not in df.columns:
         df["Actual Quantity"] = 0
     if "Difference" not in df.columns:
         df["Difference"] = df["Actual Quantity"] - df["Available Quantity"]
 
-    barcode = st.text_input("Scan or enter barcode", key="barcode_input")
+    # حفظ الداتا المحدثة في session_state (مهم)
+    st.session_state["sheets_data"][brand_selected] = df
 
-    # تابع معالجة الباركود
+    st.subheader(f"Brand: {brand_selected}")
+
+    # تأكد من وجود المفتاح في session_state
+    if "barcode_input" not in st.session_state:
+        st.session_state["barcode_input"] = ""
+
+    # حقل إدخال الباركود
+    barcode = st.text_input("Scan or enter barcode:", key="barcode_input", placeholder="Type or scan barcode...")
+
     def process_barcode(barcode_value):
         barcode_value = barcode_value.strip()
         if len(barcode_value) >= 9:
@@ -39,37 +55,36 @@ if brand_list:
             if mask.any():
                 df.loc[mask, "Actual Quantity"] += 1
                 df["Difference"] = df["Actual Quantity"] - df["Available Quantity"]
-                st.success(f"Barcode {barcode_value} counted.")
+                st.success(f"✅ Barcode '{barcode_value}' counted for brand '{brand_selected}'.")
             else:
-                st.warning(f"Barcode {barcode_value} not found.")
+                st.warning(f"❌ Barcode '{barcode_value}' not found in brand '{brand_selected}'.")
+            # حدث الداتا في session_state بعد التغيير
+            st.session_state["sheets_data"][brand_selected] = df
             return True
         return False
 
-    # لو خانة الباركود فيها قيمة (يعني ضغط Enter أو خرج من الخانة)
-    if barcode:
-        if process_barcode(barcode):
-            # بعد المعالجة نفرغ الخانة من غير زرار
-            st.session_state["barcode_input"] = ""
+    # لما يدخل barcode و طوله كافي يعالج ويشيل قيمة الإدخال تلقائياً
+    if barcode and process_barcode(barcode):
+        st.session_state["barcode_input"] = ""
 
+    # عرض جدول البراند المختار مع تحديثات الكميات
     st.dataframe(df, use_container_width=True)
 
+    # تحميل الملف النهائي بجميع الأوراق، مع اسم يحتوي على البراند والتاريخ
     buffer = io.BytesIO()
-    today_str = datetime.today().strftime("%Y-%m-%d")
-    filename = f"{selected_brand}_{today_str}_inventory.xlsx"
     with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
-        for brand_name, brand_df in st.session_state["sheets_data"].items():
-            if brand_name == selected_brand:
-                brand_df = df
-            else:
-                if "Actual Quantity" not in brand_df.columns:
-                    brand_df["Actual Quantity"] = 0
-                if "Difference" not in brand_df.columns:
-                    brand_df["Difference"] = brand_df["Actual Quantity"] - brand_df["Available Quantity"]
-            brand_df.to_excel(writer, sheet_name=brand_name, index=False)
+        for sheet_name, sheet_df in st.session_state["sheets_data"].items():
+            sheet_df.to_excel(writer, sheet_name=sheet_name, index=False)
+        writer.save()
+
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    download_filename = f"Inventory_{today_str}.xlsx"
 
     st.download_button(
-        label="Download Updated Inventory",
+        label="📥 Download Updated Inventory File",
         data=buffer.getvalue(),
-        file_name=filename,
+        file_name=download_filename,
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+else:
+    st.info("Please upload an inventory Excel file to get started.")
